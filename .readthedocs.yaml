@@ -1,98 +1,50 @@
 # .readthedocs.yaml
 # Production-ready configuration for FastAPI RBAC Enterprise documentation
 # Comprehensive Role-Based Access Control system for FastAPI applications
-# This file enables automatic documentation builds and deployment on ReadTheDocs
 
 version: 2
 
-# Build environment configuration
 build:
   os: ubuntu-22.04
   tools:
     python: "3.13"
-  
-  # Custom commands for better control
   jobs:
     pre_checkout:
-      - "echo 'Starting documentation build for FastAPI RBAC'"
-    
+      - command: "echo 'Starting documentation build for FastAPI RBAC'"
+
     post_checkout:
-      - "git fetch --unshallow || true"
-    
+      - command: "git fetch --unshallow || true"
+
     pre_install:
-      - "pip install --upgrade pip"
-      - "pip install uv"
-    
+      - command: "pip install --upgrade pip"
+      - command: "pip install uv"
+
     install:
-      - "uv pip install -e '.[docs]'"
-      - "uv pip install mkdocs-material-extensions pillow cairosvg pymdown-extensions"
-    
+      - command: "uv pip install --system -e '.[docs]'"
+      - command: "uv pip install --system mkdocs-material-extensions pillow cairosvg pymdown-extensions"
+
     post_install:
-      - "python --version"
-      - "pip list | grep -E 'mkdocs|pymdown|mkdocstrings'"
-    
+      - command: "python --version"
+      - command: "pip list | grep -E 'mkdocs|pymdown|mkdocstrings'"
+
     pre_build:
-      - "mkdir -p $READTHEDOCS_OUTPUT/html"
-      - "echo 'Building documentation with MkDocs'"
-    
+      - command: "mkdir -p $READTHEDOCS_OUTPUT/html"
+      - command: "echo 'Building documentation with MkDocs'"
+
     build:
-      - "mkdocs build --clean --verbose --site-dir $READTHEDOCS_OUTPUT/html"
-    
+      - command: "mkdocs build --clean --verbose --site-dir $READTHEDOCS_OUTPUT/html"
+
     post_build:
-      - "echo 'Documentation built successfully'"
-      - "ls -la $READTHEDOCS_OUTPUT/html"
+      - command: "echo 'Documentation built successfully'"
+      - command: "ls -la $READTHEDOCS_OUTPUT/html"
 
-# MkDocs configuration
-mkdocs:
-  configuration: mkdocs.yml
-  fail_on_warning: false  # Set to true for stricter builds in production
-
-# Python requirements
 python:
-  version: "3.13"
   install:
     - method: pip
       path: .
       extra_requirements:
         - docs
 
-# Automatic deployment configuration
-# These settings enable CI/CD integration with GitHub
-# Docs will automatically build on pushes to main branch
-# and on pull requests for preview builds
-
-# Build formats - multiple output formats for distribution
-formats:
-  - pdf
-  - epub
-  - htmlzip
-
-# Search optimizations for better documentation discoverability
-search:
-  ranking:
-    # Higher priority for essential documentation
-    index.html: 10
-    api-reference.html: 9
-    integration.html: 8
-    caching.html: 7
-    multi-tenancy.html: 7
-  
-  ignore:
-    - 404.html
-    - search.html
-    - sitemap.xml
-
-# Submodules configuration
-submodules:
-  include: all
-  recursive: true
-
 # Pull request preview builds
-# Automatically creates preview documentation for pull requests
 pull_requests:
   enabled: true
-
-# Sphinx configuration (not used - using MkDocs instead)
-# sphinx:
-#   configuration: docs/conf.py
-#   fail_on_warning: true

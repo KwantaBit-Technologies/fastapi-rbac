@@ -13,35 +13,21 @@ build:
   
   # Custom commands for better control
   jobs:
-    pre_checkout:
-      - echo "Starting documentation build for FastAPI RBAC"
+    pre_checkout: "echo 'Starting documentation build for FastAPI RBAC'"
     
-    post_checkout:
-      - git fetch --unshallow || true
+    post_checkout: "git fetch --unshallow || true"
     
-    pre_install:
-      - pip install --upgrade pip
-      - pip install uv
+    pre_install: "pip install --upgrade pip && pip install uv"
     
-    install:
-      - uv pip install -e ".[docs]"
-      - uv pip install mkdocs-material-extensions pillow cairosvg
-      - uv pip install pymdown-extensions
+    install: "uv pip install -e '.[docs]' && uv pip install mkdocs-material-extensions pillow cairosvg pymdown-extensions"
     
-    post_install:
-      - python --version
-      - pip list | grep -E "mkdocs|pymdown|mkdocstrings"
+    post_install: "python --version && pip list | grep -E 'mkdocs|pymdown|mkdocstrings'"
     
-    pre_build:
-      - mkdir -p $READTHEDOCS_OUTPUT/html
-      - echo "Building documentation with MkDocs"
+    pre_build: "mkdir -p $READTHEDOCS_OUTPUT/html && echo 'Building documentation with MkDocs'"
     
-    build:
-      - mkdocs build --clean --verbose --site-dir $READTHEDOCS_OUTPUT/html
+    build: "mkdocs build --clean --verbose --site-dir $READTHEDOCS_OUTPUT/html"
     
-    post_build:
-      - echo "Documentation built successfully"
-      - ls -la $READTHEDOCS_OUTPUT/html
+    post_build: "echo 'Documentation built successfully' && ls -la $READTHEDOCS_OUTPUT/html"
 
 # MkDocs configuration
 mkdocs:

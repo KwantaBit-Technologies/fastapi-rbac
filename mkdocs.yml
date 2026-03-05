@@ -3,9 +3,12 @@ site_description: Production-grade Role-Based Access Control for FastAPI
 site_author: Munya junior (khalid) at Kwantabit Technologies
 site_url: https://fastapi-rbac.readthedocs.io
 
+# Documentation directory
+docs_dir: src/docs
+
 repo_name: kwantabit/fastapi-rbac
 repo_url: https://github.com/KwantaBit-Technologies/fastapi-rbac
-edit_uri: edit/main/docs/
+edit_uri: edit/main/src/docs/
 
 theme:
   name: material
@@ -62,12 +65,8 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
   - API Reference: api-reference.md
   - Guides:
     - Caching: caching.md
     - Multi-tenancy: multi-tenancy.md
     - Integration: integration.md
-    - Deployment: deployment.md
-  - Contributing: contributing.md
-  - Changelog: changelog.md

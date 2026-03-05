@@ -30,8 +30,6 @@ build:
     pre_build:
       - command: "mkdir -p $READTHEDOCS_OUTPUT/html"
       - command: "echo 'Building documentation with MkDocs'"
-
-    build:
       - command: "mkdocs build --clean --verbose --site-dir $READTHEDOCS_OUTPUT/html"
 
     post_build:
@@ -45,6 +43,5 @@ python:
       extra_requirements:
         - docs
 
-# Pull request preview builds
 pull_requests:
   enabled: true

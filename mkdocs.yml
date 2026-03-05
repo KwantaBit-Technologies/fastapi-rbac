@@ -4,7 +4,7 @@ site_author: Munya junior (khalid) at Kwantabit Technologies
 site_url: https://fastapi-rbac.readthedocs.io
 
 repo_name: kwantabit/fastapi-rbac
-repo_url: https://github.com/kwantabit/fastapi-rbac
+repo_url: https://github.com/KwantaBit-Technologies/fastapi-rbac
 edit_uri: edit/main/docs/
 
 theme:

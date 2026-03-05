@@ -205,7 +205,7 @@ MIT License  see the [LICENSE](../../LICENSE) file.
 
 ## 💬 Support
 
-* GitHub Issues: https://github.com/kwantabit/fastapi-rbac/issues
+* GitHub Issues: https://github.com/KwantaBit-Technologies-Technologies/fastapi-rbac/issues
 * Documentation: https://fastapi-rbac.readthedocs.io
 * Discord: https://discord.gg/fastapi-rbac
 

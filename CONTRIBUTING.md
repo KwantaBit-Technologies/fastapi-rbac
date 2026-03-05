@@ -44,7 +44,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ```bash
 # Clone your fork
-git clone https://github.com/kwantabit/fastapi-rbac.git
+git clone https://github.com/KwantaBit-Technologies/fastapi-rbac.git
 cd fastapi-rbac
 
 # Install uv (recommended)

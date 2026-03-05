@@ -435,7 +435,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 💬 Support
 
-- [GitHub Issues](https://github.com/kwantabit/fastapi-rbac/issues)
+- [GitHub Issues](https://github.com/KwantaBit-Technologies/fastapi-rbac/issues)
 - [Documentation](https://fastapi-rbac.readthedocs.io)
 - [Discord](https://discord.gg/fastapi-rbac)
 
@@ -461,7 +461,7 @@ Full documentation is available at [fastapi-rbac.readthedocs.io](https://fastapi
 🧪 Testing
 bash
 # Clone the repository
-git clone https://github.com/kwantabit/fastapi-rbac.git
+git clone https://github.com/KwantaBit-Technologies/fastapi-rbac.git
 cd fastapi-rbac
 
 # Install with uv (recommended)
@@ -509,7 +509,7 @@ GraphQL support (Q3 2026)
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ⭐ Star History
-https://api.star-history.com/svg?repos=kwantabit/fastapi-rbac&type=Date
+https://api.star-history.com/svg?repos=KwantaBit-Technologies/fastapi-rbac&type=Date
 
 💬 Community
 📢 Discord Server

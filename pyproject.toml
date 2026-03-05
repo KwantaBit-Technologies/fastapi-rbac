@@ -84,11 +84,11 @@ all = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/kwantabit/fastapi-rbac"
+"Homepage" = "https://github.com/KwantaBit-Technologies/fastapi-rbac"
 "Documentation" = "https://fastapi-rbac.readthedocs.io"
-"Repository" = "https://github.com/kwantabit/fastapi-rbac.git"
-"Changelog" = "https://github.com/kwantabit/fastapi-rbac/blob/main/CHANGELOG.md"
-"Issues" = "https://github.com/kwantabit/fastapi-rbac/issues"
+"Repository" = "https://github.com/KwantaBit-Technologies/fastapi-rbac.git"
+"Changelog" = "https://github.com/KwantaBit-Technologies/fastapi-rbac/blob/main/CHANGELOG.md"
+"Issues" = "https://github.com/KwantaBit-Technologies/fastapi-rbac/issues"
 
 [project.scripts]
 rbac-cli = "rbac.cli:main"

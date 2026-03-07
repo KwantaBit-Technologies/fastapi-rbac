@@ -1,61 +1,117 @@
-# FastAPI Enterprise RBAC Engine
+![GitHub Repo stars](https://img.shields.io/github/stars/kwantabit-Technologies/fastapi-rbac)
+![GitHub issues](https://img.shields.io/github/issues/kwantabit-Technologies/fastapi-rbac)
+![License](https://img.shields.io/github/license/kwantabit-Technologies/fastapi-rbac)
 
-A production-grade Role-Based Access Control (RBAC) system for FastAPI applications that can be used as a standalone library or integrated into any SaaS, internal system, or open-source project.
+# FastAPI RBAC Engine
 
-## Features
+**Production-grade Role-Based Access Control (RBAC) for FastAPI**
 
-- **Database-driven roles and permissions** - Full CRUD operations for roles, permissions, and assignments
-- **Role inheritance** - Parent roles automatically grant permissions to child roles
-- **Scoped permissions** - Permission on specific objects or modules (e.g., patient record X)
-- **Multi-tenant support** - One engine can handle multiple independent organizations
-- **Route protection** - Decorators and dependencies for API endpoint protection
-- **JWT + OAuth2 integration** - Seamless integration with FastAPI's auth system
-- **Audit logging** - Track all changes in roles, permissions, and assignments
-- **Async-ready** - Works with async FastAPI routes for high-performance apps
-- **Integration hooks** - Support for external identity providers (LDAP, Keycloak)
+FastAPI RBAC Engine is a modular, async-first authorization system designed for **modern FastAPI applications**. It provides scalable permission management, role hierarchies, scoped access control, and multi-tenant support for SaaS and enterprise systems.
 
-## Installation
+Built with ❤️ by Khalid at **Kwantabit Technologies**.
+
+---
+
+# Why FastAPI RBAC Engine?
+
+Most FastAPI RBAC examples online are:
+
+* Too simplistic
+* Hardcoded
+* Not scalable
+* Not production-ready
+
+FastAPI RBAC Engine provides a **complete authorization infrastructure** designed for real applications.
+
+It is built for:
+
+* SaaS platforms
+* Enterprise APIs
+* Healthcare systems
+* Fintech dashboards
+* Internal tools
+* Open-source projects
+
+---
+
+# Features
+
+| Feature              | Description                                              |
+| -------------------- | -------------------------------------------------------- |
+| Database-Driven      | Full CRUD for roles, permissions, and assignments        |
+| Role Inheritance     | Hierarchical roles with automatic permission inheritance |
+| Scoped Permissions   | Object-level access control                              |
+| Multi-Tenant         | Support for multiple organizations                       |
+| Async-First          | Built for FastAPI async workloads                        |
+| Redis Caching        | High-performance permission checks                       |
+| Audit Logging        | Full audit trail for compliance                          |
+| Route Protection     | Elegant decorators for endpoints                         |
+| Identity Integration | LDAP and Keycloak support                                |
+| Extensible           | Plug in custom identity providers                        |
+
+---
+
+# Installation
+
+Until the package is published to PyPI, install directly from GitHub.
+
+## Install from GitHub
+
+```bash
+pip install git+https://github.com/kwantabit-Technologies/fastapi-rbac.git
+```
+
+## Install for Development
+
+```bash
+git clone https://github.com/kwantabit-Technologies/fastapi-rbac.git
+
+cd fastapi-rbac
+
+pip install -e .
+```
+
+## Install with uv (Recommended for Contributors)
+
+```bash
+pip install uv
+
+git clone https://github.com/kwantabit-Technologies/fastapi-rbac.git
+cd fastapi-rbac
+
+uv venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+uv pip install -e ".[dev,all]"
+```
+
+## Future PyPI Installation
+
+Once the package is released on PyPI, installation will be as simple as:
 
 ```bash
 pip install fastapi-rbac
 ```
 
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| 🗃️ **Database-driven** | Full CRUD for roles, permissions, and assignments with async support |
-| 🔄 **Role inheritance** | Create hierarchical roles with automatic permission inheritance |
-| 🎯 **Scoped permissions** | Object-level permissions (e.g., access to specific patient records) |
-| 🏢 **Multi-tenant** | Built-in support for multiple organizations with data isolation |
-| 🛡️ **Route protection** | Elegant decorators and dependencies for FastAPI endpoints |
-| 🔐 **JWT + OAuth2** | Seamless integration with FastAPI's authentication system |
-| 📝 **Audit logging** | Comprehensive audit trail with before/after value tracking |
-| 🚀 **Redis caching** | High-performance caching with automatic invalidation |
-| 🔌 **Identity providers** | LDAP and Keycloak integration out-of-the-box |
-| ⚡ **Async-first** | Built for high-concurrency workloads |
-
-
-## 🚀 Quick Start
-
-### Installation
+## Optional Features
 
 ```bash
-# Basic installation
-pip install fastapi-rbac
-
-# With PostgreSQL support
+# PostgreSQL support
 pip install "fastapi-rbac[postgres]"
 
-# With Redis caching
+# Redis caching
 pip install "fastapi-rbac[redis]"
 
-# With identity providers
+# Identity providers
 pip install "fastapi-rbac[ldap,keycloak]"
 
 # Install everything
 pip install "fastapi-rbac[all]"
 ```
+
+---
+
+# Quick Start
 
 ### Minimal Example
 
@@ -79,13 +135,19 @@ async def protected_route(
     return {"message": f"Hello {current_user.id}"}
 ```
 
-### Complete Setup
+---
+
+# Full Setup Example
 
 ```python
 from fastapi import FastAPI, Depends
 from rbac import (
-    Database, PermissionService, RoleService, 
-    AssignmentService, RBACDependencies, require_permissions
+    Database,
+    PermissionService,
+    RoleService,
+    AssignmentService,
+    RBACDependencies,
+    require_permissions
 )
 
 app = FastAPI()
@@ -94,27 +156,17 @@ app = FastAPI()
 db = Database("postgresql://user:pass@localhost/rbac")
 await db.connect()
 
-# Create services
 permission_service = PermissionService(db)
 role_service = RoleService(db, permission_service)
 assignment_service = AssignmentService(db, role_service, permission_service)
 
-# Setup RBAC
 rbac = RBACDependencies(
     permission_service=permission_service,
     assignment_service=assignment_service,
     secret_key="your-secret-key"
 )
 
-# Initialize default roles (Super Admin, Admin, User)
 await role_service.initialize_default_roles()
-
-@app.get("/users/me")
-@require_permissions(["user:read:self"])
-async def get_current_user(
-    current_user = Depends(rbac.get_current_active_user)
-):
-    return {"user_id": str(current_user.id)}
 
 @app.get("/patients/{patient_id}")
 @require_permissions(["patient:read"], resource_scope_param="patient_id")
@@ -122,47 +174,56 @@ async def get_patient(patient_id: str):
     return {"patient_id": patient_id}
 ```
 
-## 📊 Performance
+---
 
-With Redis caching enabled:
+# Architecture Overview
 
-| Operation | Without Cache | With Cache | Improvement |
-|-----------|---------------|-----------|-------------|
-| Permission check | 50-100ms | 1-5ms | 10-50x |
-| Get user permissions | 100-200ms | 2-10ms | 10-20x |
-| Get role hierarchy | 50-150ms | 1-5ms | 10-30x |
-
-## 🏗️ Architecture
-
-```text
-┌─────────────────────────────────────────────────────┐
-│                    Your FastAPI App                  │
-├─────────────────────────────────────────────────────┤
-│                    RBAC Decorators                    │
-├─────────────────────────────────────────────────────┤
-│   Permission   │     Role      │    Assignment       │
-│    Service     │    Service    │     Service         │
-├─────────────────────────────────────────────────────┤
-│         Redis Cache (Optional)                       │
-├─────────────────────────────────────────────────────┤
-│         Database (PostgreSQL/MySQL)                  │
-├─────────────────────────────────────────────────────┤
-│    LDAP        │   Keycloak    │   Other IdPs        │
-└─────────────────────────────────────────────────────┘
+```
+Your FastAPI Application
+        │
+        ▼
+RBAC Decorators & Dependencies
+        │
+        ▼
+Permission Service
+Role Service
+Assignment Service
+        │
+        ▼
+Redis Cache (optional)
+        │
+        ▼
+Database (PostgreSQL / MySQL)
+        │
+        ▼
+Identity Providers
+(LDAP / Keycloak / Others)
 ```
 
-## Core Concepts
+---
 
-### Permissions
+# Core Concepts
 
-Permissions follow the format `resource:action:scope`:
+## Permissions
 
-- `resource:read` - Read access to all resources of type
-- `resource:write:123` - Write access to specific resource ID 123
-- `*:*` - Superuser access (all resources, all actions)
+Permissions follow the format:
+
+```
+resource:action:scope
+```
+
+Examples:
+
+```
+patient:read
+patient:update:123
+user:delete
+*:*   (superuser)
+```
+
+Example:
 
 ```python
-# Create a permission
 permission = await permission_service.create_permission(
     name="Read Patients",
     resource=ResourceType.PATIENT,
@@ -171,18 +232,28 @@ permission = await permission_service.create_permission(
 )
 ```
 
-### Roles
+---
 
-Roles can inherit from other roles, creating a hierarchy:
+## Roles
+
+Roles group permissions and can inherit from other roles.
+
+Example hierarchy:
+
+```
+User
+ └── Admin
+      └── SuperAdmin
+```
+
+Example:
 
 ```python
-# Create base role
 user_role = await role_service.create_role(
     name="User",
     tenant_id=tenant.id
 )
 
-# Create admin role that inherits from user
 admin_role = await role_service.create_role(
     name="Admin",
     parent_ids=[user_role.id],
@@ -190,332 +261,163 @@ admin_role = await role_service.create_role(
 )
 ```
 
-### Assignments
+---
 
-Assign roles to users with optional scopes and expiration:
+## Assignments
+
+Roles are assigned to users.
+
+Assignments can include:
+
+* expiration
+* resource scope
+* tenant isolation
+
+Example:
 
 ```python
-# Assign role with expiration
-assignment = await assignment_service.assign_role_to_user(
+await assignment_service.assign_role_to_user(
     user_id=user.id,
     role_id=admin_role.id,
     tenant_id=tenant.id,
-    expires_in_days=30,
-    resource_scope={"department": "cardiology"}
+    expires_in_days=30
 )
 ```
 
-## API Reference
+---
 
-### Permission Service
+# Performance
 
-| Method | Description |
-|--------|-------------|
-| create_permission() | Create a new permission |
-| get_permission() | Get permission by ID |
-| get_permission_by_string() | Get permission by string representation |
-| update_permission() | Update permission details |
-| delete_permission() | Delete a permission |
-| list_permissions() | List permissions with filters |
-| check_user_permission() | Check if user has specific permission |
-| get_user_permissions() | Get all permissions for a user |
-| grant_permission_to_role() | Grant permission to a role |
-| revoke_permission_from_role() | Revoke permission from a role |
+With Redis caching enabled:
 
-### Role Service
+| Operation            | Without Cache | With Cache |
+| -------------------- | ------------- | ---------- |
+| Permission Check     | ~50-100ms     | ~1-5ms     |
+| Get User Permissions | ~100-200ms    | ~2-10ms    |
+| Get Role Hierarchy   | ~50-150ms     | ~1-5ms     |
 
-| Method | Description |
-|--------|-------------|
-| create_role() | Create a new role |
-| get_role() | Get role by ID |
-| get_role_by_name() | Get role by name |
-| update_role() | Update role details |
-| delete_role() | Delete a role |
-| list_roles() | List roles with filters |
-| get_role_hierarchy() | Get complete role hierarchy |
-| add_role_parent() | Add parent to role |
-| remove_role_parent() | Remove parent from role |
-| get_role_permissions() | Get all permissions for a role |
-| get_roles_for_user() | Get all roles for a user |
-| get_users_in_role() | Get all users in a role |
+---
 
-### Assignment Service
-
-| Method | Description |
-|--------|-------------|
-| assign_role_to_user() | Assign role to user |
-| revoke_role_from_user() | Revoke role from user |
-| get_user_assignments() | Get all assignments for a user |
-| get_role_assignments() | Get all assignments for a role |
-| update_assignment_scope() | Update assignment scope |
-| extend_assignment() | Extend assignment expiration |
-| bulk_assign_roles() | Bulk assign roles to users |
-| transfer_assignments() | Transfer assignments between roles |
-| get_expiring_assignments() | Get expiring assignments |
-| get_user_effective_roles() | Get effective roles with inheritance |
-
-### Audit Service
-
-| Method | Description |
-|--------|-------------|
-| log() | Log an audit event |
-| log_action() | Log a simple action |
-| log_access() | Log access attempts |
-| log_auth() | Log authentication events |
-| log_change() | Log changes with diff |
-| query_logs() | Query audit logs |
-| get_resource_history() | Get history for a resource |
-| get_user_trail() | Get audit trail for a user |
-| export_logs() | Export logs for compliance |
-
-## Advanced Usage
-
-### Multi-Tenancy
-
-```python
-# Create tenant
-tenant = Tenant(name="Acme Corp", domain="acme.com")
-await db.execute("INSERT INTO tenants ...")
-
-# All operations are tenant-aware
-permissions = await permission_service.list_permissions(tenant_id=tenant.id)
-```
-
-### Role Hierarchy
-
-```python
-# Create hierarchy
-ceo = await role_service.create_role(name="CEO", tenant_id=tenant.id)
-vp = await role_service.create_role(name="VP", parent_ids=[ceo.id], tenant_id=tenant.id)
-manager = await role_service.create_role(name="Manager", parent_ids=[vp.id], tenant_id=tenant.id)
-
-# Manager inherits all permissions from VP and CEO
-manager_perms = await role_service.get_role_permissions(manager.id, include_inherited=True)
-```
-
-### Scoped Permissions
-
-```python
-# Assign role with scope
-await assignment_service.assign_role_to_user(
-    user_id=doctor.id,
-    role_id=doctor_role.id,
-    tenant_id=tenant.id,
-    resource_scope={"patient_id": "123"}
-)
-
-# Check scoped access
-has_access = await permission_service.check_user_permission(
-    user_id=doctor.id,
-    required_permission="patient:read",
-    resource_scope={"id": "123"}  # This will match
-)
-```
-
-### Audit Trail
-
-```python
-# Query audit logs
-logs = await audit_service.query_logs(
-    user_id=user.id,
-    action=AuditAction.UPDATE,
-    start_date=datetime.utcnow() - timedelta(days=7),
-    limit=100
-)
-
-# Get resource history
-history = await audit_service.get_resource_history(
-    resource_type=AuditResourceType.ROLE,
-    resource_id=role.id
-)
-```
-
-### External Identity Provider Integration
-
-```python
-from rbac.integration import LDAPProvider, LDAPConfig, IdentitySyncService
-
-# Configure LDAP
-ldap_config = LDAPConfig(
-    server_uri="ldap://localhost:389",
-    base_dn="dc=example,dc=com",
-    bind_dn="cn=admin,dc=example,dc=com",
-    bind_password="password"
-)
-
-# Create provider
-ldap_provider = LDAPProvider(ldap_config)
-
-# Create sync service
-sync_service = IdentitySyncService(
-    provider=ldap_provider,
-    role_service=role_service,
-    assignment_service=assignment_service,
-    role_mapping={
-        "admin": "Administrator",
-        "user": "Regular User"
-    }
-)
-
-# Sync users
-await sync_service.sync_now()
-```
-
-## Testing
+# Testing
 
 Run the test suite:
 
 ```bash
 pytest tests/ -v --cov=rbac
-
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ --cov=rbac --cov-report=html
-
-# Run specific test file
-pytest tests/test_permission_service.py -v
-
-# Run specific test
-pytest tests/test_permission_service.py::TestPermissionService::test_create_permission -v
-
-# Run performance tests
-pytest tests/test_performance.py -v --benchmark-only
 ```
 
-## Configuration
+Run benchmarks:
 
-### Database
-
-```python
-db = Database(
-    dsn="postgresql://user:pass@localhost/rbac",
-    min_size=10,  # Min connection pool size
-    max_size=20   # Max connection pool size
-)
+```bash
+pytest tests/test_performance.py --benchmark-only
 ```
 
-### JWT
+---
 
-```python
-rbac = RBACDependencies(
-    secret_key="your-secret-key",
-    algorithm="HS256"  # or "RS256" for asymmetric keys
-)
-```
+# Best Practices
 
-### Audit
+* Follow **least privilege principle**
+* Use **role hierarchy** to reduce duplication
+* Enable **Redis caching** for performance
+* Use **audit logging** for security compliance
+* Set **expiration for temporary access**
+* Use **scoped permissions** for sensitive resources
 
-```python
-audit_service = AuditService(
-    db=db,
-    retention_days=90,  # Keep logs for 90 days
-    batch_size=100      # Batch size for bulk operations
-)
-```
+---
 
-## Best Practices
+# Use Cases
 
-- Use the principle of least privilege - Grant only necessary permissions
-- Leverage role hierarchy - Reduce duplication through inheritance
-- Implement audit logging - Track all security-relevant changes
-- Use scoped permissions - Limit access to specific resources
-- Set expiration for temporary access - Auto-revoke temporary roles
-- Cache permissions - Use the built-in caching for performance
-- Regular cleanup - Run cleanup_expired_assignments() periodically
+FastAPI RBAC Engine works well for:
 
-## 🤝 Contributing
+* SaaS platforms
+* Healthcare systems
+* Fintech dashboards
+* Internal enterprise tools
+* Developer platforms
+* Open-source frameworks
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md).
+---
 
-## 📄 License
+# Roadmap
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Upcoming features:
 
-## 💬 Support
+* Admin UI for RBAC management
+* CLI management tool
+* Webhooks for permission events
+* Prometheus metrics
+* Rate limiting module
+* Additional identity providers (Okta, Auth0, Azure AD)
 
-- [GitHub Issues](https://github.com/KwantaBit-Technologies/fastapi-rbac/issues)
-- [Documentation](https://fastapi-rbac.readthedocs.io)
-- [Discord](https://discord.gg/fastapi-rbac)
+---
 
-## 📚 Documentation
+# Contributing
 
-Full documentation is available at [fastapi-rbac.readthedocs.io](https://fastapi-rbac.readthedocs.io)
+Contributions are welcome.
 
-- [Getting Started Guide](https://fastapi-rbac.readthedocs.io/en/latest/getting-started/)
-- [API Reference](https://fastapi-rbac.readthedocs.io/en/latest/api/)
-- [Caching Guide](https://fastapi-rbac.readthedocs.io/en/latest/caching/)
-- [Multi-tenancy](https://fastapi-rbac.readthedocs.io/en/latest/multi-tenancy/)
-- [Integration Guide](https://fastapi-rbac.readthedocs.io/en/latest/integration/)
-- [Deployment Guide](https://fastapi-rbac.readthedocs.io/en/latest/deployment/)
+Ways to contribute:
 
-## 🎯 Use Cases
+* Fix bugs
+* Improve documentation
+* Add integrations
+* Improve performance
+* Expand test coverage
 
-- **SaaS Applications** - Multi-tenant access control
-- **Healthcare Systems** - HIPAA-compliant patient data access
-- **Financial Services** - Fine-grained permission management
-- **Internal Tools** - Employee role management
-- **Open Source Projects** - Reusable authorization layer
+See:
 
-🧪 Testing
-bash
-# Clone the repository
-git clone https://github.com/KwantaBit-Technologies/fastapi-rbac.git
-cd fastapi-rbac
+`CONTRIBUTING.md`
 
-# Install with uv (recommended)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev,all]"
+---
 
-# Run tests
-pytest tests/ -v --cov=rbac
+# Documentation
 
-# Run performance benchmarks
-pytest tests/test_performance.py -v --benchmark-only
-🤝 Contributing
-We welcome contributions! Please see our Contributing Guide.
+Full documentation:
 
-🐛 Report a bug
+[https://fastapi-rbac.readthedocs.io](https://fastapi-rbac.readthedocs.io)
 
-💡 Request a feature
+Includes:
 
-🔧 Submit a PR
+* Getting Started
+* API Reference
+* Multi-tenancy Guide
+* Integration Guide
+* Deployment Guide
 
-📈 Roadmap
-Core RBAC functionality
+---
 
-Role inheritance
+# Support
 
-Multi-tenancy
+GitHub Issues  
+[https://github.com/kwantabit-Technologies/fastapi-rbac/issues](https://github.com/kwantabit-Technologies/fastapi-rbac/issues)
 
-Audit logging
+Discussions  
+[https://github.com/kwantabit-Technologies/fastapi-rbac/discussions](https://github.com/kwantabit-Technologies/fastapi-rbac/discussions)
 
-Redis caching
+---
 
-LDAP/Keycloak integration
+# License
 
-Admin UI (Q2 2026)
+MIT License
 
-Rate limiting (Q2 2026)
+See `LICENSE` file for details.
 
-Webhooks (Q3 2026)
+---
 
-GraphQL support (Q3 2026)
+# Community
 
-📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+Twitter  
+@kwantabit
 
-⭐ Star History
-https://api.star-history.com/svg?repos=KwantaBit-Technologies/fastapi-rbac&type=Date
+GitHub  
+[https://github.com/kwantabit-Technologies](https://github.com/kwantabit-Technologies)
 
-💬 Community
-📢 Discord Server
+Website  
+[https://kwantabit.com](https://kwantabit.com)
 
-🐦 Twitter
+---
 
-📧 Email
+<div align="center">
 
-<div align="center"> <sub>Built with ❤️ by Khalid at <a href="https://kwantabit.com">Kwantabit Technologies</a></sub> </div> ```
+Built with ❤️ by khalid at **Kwantabit Technologies**
+
+</div>

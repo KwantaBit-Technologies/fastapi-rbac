@@ -3,11 +3,11 @@ from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from uuid import uuid4
 import uvicorn
 
-from core.database import Database
-from services.role_service import RoleService
-from services.assignment_service import AssignmentService
-from services.permission_service import PermissionService
-from integration import (
+from rbac.core.database import Database
+from rbac.services.role_service import RoleService
+from rbac.services.assignment_service import AssignmentService
+from rbac.services.permission_service import PermissionService
+from rbac.integration import (
     LDAPProvider,
     LDAPConfig,
     KeycloakProvider,

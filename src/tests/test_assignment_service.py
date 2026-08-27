@@ -1,7 +1,7 @@
 # tests/test_assignment_service.py
 import pytest
 from uuid import uuid4
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,8 +37,8 @@ class TestAssignmentService:
         )
 
         assert assignment.expires_at is not None
-        assert assignment.expires_at > datetime.utcnow()
-        assert assignment.expires_at < datetime.utcnow() + timedelta(days=31)
+        assert assignment.expires_at > datetime.now(timezone.utc)
+        assert assignment.expires_at < datetime.now(timezone.utc) + timedelta(days=31)
 
     async def test_prevent_duplicate_assignments(
         self, assignment_service, test_user_id, test_tenant, sample_roles

@@ -3,18 +3,18 @@ from fastapi import FastAPI, Depends
 import uvicorn
 from uuid import uuid4
 
-from core.database import Database
-from services.permission_service import PermissionService
-from services.role_service import RoleService
-from services.assignment_service import AssignmentService
-from cache import (
+from rbac.core.database import Database
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
+from rbac.services.assignment_service import AssignmentService
+from rbac.cache import (
     RedisCache,
     RedisCachedPermissionService,
     RedisCachedRoleService,
     RedisCachedAssignmentService,
     CacheManager,
 )
-from dependencies.auth import RBACDependencies, require_permissions
+from rbac.dependencies.auth import RBACDependencies, require_permissions
 
 app = FastAPI(title="RBAC with Redis Caching")
 

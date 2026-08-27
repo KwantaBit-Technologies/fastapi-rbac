@@ -9,7 +9,7 @@ from redis.asyncio import Redis, ConnectionPool
 from redis.asyncio.retry import Retry
 from redis.backoff import ExponentialBackoff
 from redis.exceptions import RedisError, ConnectionError, TimeoutError
-from utils.logger import setup_logger
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("redis_cache")
 

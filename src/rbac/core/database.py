@@ -23,8 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB, INET
 import uuid
-from datetime import datetime
-from utils.logger import setup_logger
+from datetime import datetime, timezone
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("DATABASE: ")
 
@@ -137,6 +137,12 @@ user_roles = Table(
     Column("resource_scope", JSONB, default={}),
     Column("granted_by", PG_UUID(as_uuid=True)),
     Column("granted_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column(
+        "updated_at",
+        TIMESTAMP(timezone=True),
+        default=datetime.now(timezone.utc),
+        onupdate=datetime.now(timezone.utc),
+    ),
     Column("expires_at", TIMESTAMP(timezone=True)),
     Column("is_active", Boolean, default=True),
     UniqueConstraint("user_id", "role_id", "tenant_id", name="uq_user_role_tenant"),
@@ -158,6 +164,7 @@ audit_logs = Table(
     Column("resource_id", PG_UUID(as_uuid=True)),
     Column("old_value", JSONB),
     Column("new_value", JSONB),
+    Column("metadata", JSONB, default={}),
     Column("ip_address", String(45)),  # IPv6 can be up to 45 chars
     Column("user_agent", Text),
     Column("created_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
@@ -259,7 +266,7 @@ class Database:
         if not self.engine:
             raise RuntimeError("Database not connected. Call connect() first.")
 
-        async with self.engine.connect() as conn:
+        async with self.engine.begin() as conn:
             result = await conn.execute(query, *args)
             row = result.first()
             return dict(row._mapping) if row else None
@@ -269,24 +276,25 @@ class Database:
         if not self.engine:
             raise RuntimeError("Database not connected. Call connect() first.")
 
-        async with self.engine.connect() as conn:
+        async with self.engine.begin() as conn:
             result = await conn.execute(query, *args)
             return [dict(row._mapping) for row in result]
 
-    async def execute(self, query, *args) -> None:
+    async def execute(self, query, *args) -> int:
         """Execute a query using SQLAlchemy Core"""
         if not self.engine:
             raise RuntimeError("Database not connected. Call connect() first.")
 
         async with self.engine.begin() as conn:
-            await conn.execute(query, *args)
+            result = await conn.execute(query, *args)
+            return result.rowcount or 0
 
     async def fetch_val(self, query, *args) -> Any:
         """Fetch a single value"""
         if not self.engine:
             raise RuntimeError("Database not connected. Call connect() first.")
 
-        async with self.engine.connect() as conn:
+        async with self.engine.begin() as conn:
             result = await conn.execute(query, *args)
             row = result.first()
             return row[0] if row else None

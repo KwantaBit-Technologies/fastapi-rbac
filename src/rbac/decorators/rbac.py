@@ -4,11 +4,11 @@ from functools import wraps
 from uuid import UUID
 from fastapi import HTTPException, Request, status, Depends
 
-from core.exceptions import PermissionDeniedError
-from services.permission_service import PermissionService
-from services.assignment_service import AssignmentService
-from dependencies.auth import UserContext, RBACDependencies
-from utils.logger import setup_logger
+from rbac.core.exceptions import PermissionDeniedError
+from rbac.services.permission_service import PermissionService
+from rbac.services.assignment_service import AssignmentService
+from rbac.dependencies.auth import UserContext, RBACDependencies
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("RBAC DECORATORS")
 

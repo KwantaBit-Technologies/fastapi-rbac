@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select, insert, update, delete, and_, or_, func, text, union
 from sqlalchemy.sql import exists
 
-from core.models import Role, Permission, UserRole
-from core.database import (
+from rbac.core.models import Role, Permission, UserRole
+from rbac.core.database import (
     Database,
     roles,
     tenants,
@@ -15,14 +15,14 @@ from core.database import (
     permissions,
     audit_logs,
 )
-from core.exceptions import (
+from rbac.core.exceptions import (
     RoleNotFoundError,
     CircularRoleHierarchyError,
     PermissionDeniedError,
     TenantNotFoundError,
 )
-from core.constants import DEFAULT_ROLES, ResourceType, PermissionAction
-from utils.logger import setup_logger
+from rbac.core.constants import DEFAULT_ROLES, ResourceType, PermissionAction
+from rbac.utils.logger import setup_logger
 from .permission_service import PermissionService
 
 logger = setup_logger("ROLE_SERVICE")
@@ -136,7 +136,7 @@ class RoleService:
             .values(
                 name=name,
                 description=description,
-                parent_ids=parent_ids or [],
+                parent_ids=[str(pid) for pid in parent_ids or []],
                 is_system_role=is_system_role,
                 tenant_id=tenant_id,
                 metadata=metadata or {},
@@ -160,7 +160,7 @@ class RoleService:
             action="CREATE",
             resource_type="role",
             resource_id=role.id,
-            new_value=role.model_dump(),
+            new_value=role.model_dump(mode="json"),
         )
 
         # Clear hierarchy cache
@@ -243,7 +243,7 @@ class RoleService:
         if description is not None:
             update_values["description"] = description
         if parent_ids is not None:
-            update_values["parent_ids"] = parent_ids
+            update_values["parent_ids"] = [str(pid) for pid in parent_ids]
         if metadata is not None:
             update_values["metadata"] = metadata
         if is_active is not None:
@@ -277,8 +277,8 @@ class RoleService:
                 action="UPDATE",
                 resource_type="role",
                 resource_id=role_id,
-                old_value=existing.model_dump(),
-                new_value=updated.model_dump(),
+                old_value=existing.model_dump(mode="json"),
+                new_value=updated.model_dump(mode="json"),
             )
 
             logger.info(f"Updated role: {updated.name}")
@@ -333,16 +333,19 @@ class RoleService:
                 f"Transferred users from role {role_id} to {transfer_to_role_id}"
             )
 
-        # Remove role from any parent relationships in other roles
-        # This uses PostgreSQL's array_remove function via text()
-        stmt = text(
-            """
-            UPDATE roles 
-            SET parent_ids = array_remove(parent_ids, :role_id)
-            WHERE :role_id = ANY(parent_ids)
-        """
-        )
-        await self.db.execute(stmt, {"role_id": role_id})
+        # Remove role from any parent relationships in other roles.
+        for child in await self.list_roles(existing.tenant_id, include_inactive=True):
+            if role_id in child.parent_ids:
+                new_parent_ids = [pid for pid in child.parent_ids if pid != role_id]
+                stmt = (
+                    update(roles)
+                    .where(roles.c.id == child.id)
+                    .values(
+                        parent_ids=[str(pid) for pid in new_parent_ids],
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                )
+                await self.db.execute(stmt)
 
         # Delete role permissions
         stmt = delete(role_permissions).where(role_permissions.c.role_id == role_id)
@@ -368,7 +371,7 @@ class RoleService:
             action="DELETE",
             resource_type="role",
             resource_id=role_id,
-            old_value=existing.model_dump(),
+            old_value=existing.model_dump(mode="json"),
         )
 
         logger.info(f"Deleted role: {existing.name}")
@@ -423,10 +426,10 @@ class RoleService:
         permissions = await self.get_role_permissions(role_id, include_inherited=True)
 
         return {
-            "role": role.model_dump(),
-            "ancestors": [r.model_dump() for r in ancestors],
-            "descendants": [r.model_dump() for r in descendants],
-            "permissions": [p.model_dump() for p in permissions],
+            "role": role.model_dump(mode="json"),
+            "ancestors": [r.model_dump(mode="json") for r in ancestors],
+            "descendants": [r.model_dump(mode="json") for r in descendants],
+            "permissions": [p.model_dump(mode="json") for p in permissions],
             "inherited_permissions_count": (
                 len(permissions) - len(role.permissions) if role.permissions else 0
             ),
@@ -457,7 +460,8 @@ class RoleService:
                 update(roles)
                 .where(roles.c.id == role_id)
                 .values(
-                    parent_ids=new_parent_ids, updated_at=datetime.now(timezone.utc)
+                    parent_ids=[str(pid) for pid in new_parent_ids],
+                    updated_at=datetime.now(timezone.utc),
                 )
             )
             await self.db.execute(stmt)
@@ -520,20 +524,6 @@ class RoleService:
         self, role_id: UUID, include_inherited: bool = True
     ) -> List[Permission]:
         """Get all permissions for a role"""
-        # Check cache
-        cache_key = f"{role_id}:{include_inherited}"
-        if cache_key in self._role_permissions_cache:
-            # Convert cached permission strings back to Permission objects
-            perm_strings = self._role_permissions_cache[cache_key]
-            permissions_list = []
-            for perm_string in perm_strings:
-                perm = await self.permission_service.get_permission_by_string(
-                    perm_string
-                )
-                if perm:
-                    permissions_list.append(perm)
-            return permissions_list
-
         # Get direct permissions
         stmt = (
             select(permissions)
@@ -561,9 +551,6 @@ class RoleService:
                     if perm.permission_string not in perm_strings:
                         permissions_list.append(perm)
                         perm_strings.add(perm.permission_string)
-
-        # Cache the permission strings
-        self._role_permissions_cache[cache_key] = perm_strings
 
         return permissions_list
 
@@ -603,14 +590,16 @@ class RoleService:
 
         # Include inherited roles if requested
         if include_inherited:
-            inherited_roles = set()
+            inherited_roles = []
+            inherited_role_ids = {role.id for role, _ in roles_with_scope}
             for role, _ in roles_with_scope:
                 ancestors = await self._get_ancestor_roles(role.id)
                 for ancestor in ancestors:
-                    if not any(r[0].id == ancestor.id for r in roles_with_scope):
-                        inherited_roles.add((ancestor, None))
+                    if ancestor.id not in inherited_role_ids:
+                        inherited_roles.append((ancestor, None))
+                        inherited_role_ids.add(ancestor.id)
 
-            roles_with_scope.extend(list(inherited_roles))
+            roles_with_scope.extend(inherited_roles)
 
         return roles_with_scope
 
@@ -688,12 +677,16 @@ class RoleService:
         if role_id == parent_id:
             return True
 
-        # Get all descendants of parent
-        descendants = await self._get_descendant_roles(parent_id)
-        return role_id in [d.id for d in descendants]
+        # A new parent creates a cycle if it is already below this role.
+        descendants = await self._get_descendant_roles(role_id)
+        return parent_id in [d.id for d in descendants]
 
     async def _get_descendant_roles(self, role_id: UUID) -> List[Role]:
         """Get all roles that inherit from this role"""
+        root_role = await self.get_role(role_id)
+        if not root_role:
+            return []
+
         # Check cache
         if role_id in self._role_hierarchy_cache:
             descendant_ids = self._role_hierarchy_cache[role_id]
@@ -704,35 +697,27 @@ class RoleService:
                     descendants.append(role)
             return descendants
 
-        # Use recursive CTE to get all descendants
-        descendant_cte = text(
-            """
-            WITH RECURSIVE role_descendants AS (
-                -- Base: direct children
-                SELECT id, parent_ids, 1 as level
-                FROM roles
-                WHERE :role_id = ANY(parent_ids)
-                
-                UNION ALL
-                
-                -- Recursive: grandchildren
-                SELECT r.id, r.parent_ids, rd.level + 1
-                FROM roles r
-                JOIN role_descendants rd ON r.id = ANY(rd.parent_ids)
-            )
-            SELECT DISTINCT id FROM role_descendants
-        """
+        all_roles = await self.list_roles(
+            tenant_id=root_role.tenant_id,
+            include_system=True,
+            include_inactive=True,
+            limit=0,
         )
+        by_parent: Dict[UUID, List[Role]] = {}
+        for role in all_roles:
+            for parent_id in role.parent_ids:
+                by_parent.setdefault(parent_id, []).append(role)
 
-        results = await self.db.fetch_all(descendant_cte, {"role_id": role_id})
-
-        descendant_ids = {r["id"] for r in results}
-        descendants = []
-
-        for rid in descendant_ids:
-            role = await self.get_role(rid)
-            if role:
-                descendants.append(role)
+        descendant_ids: Set[UUID] = set()
+        descendants: List[Role] = []
+        stack = list(by_parent.get(role_id, []))
+        while stack:
+            role = stack.pop()
+            if role.id in descendant_ids:
+                continue
+            descendant_ids.add(role.id)
+            descendants.append(role)
+            stack.extend(by_parent.get(role.id, []))
 
         # Cache the result
         self._role_hierarchy_cache[role_id] = descendant_ids
@@ -745,33 +730,18 @@ class RoleService:
         if not role or not role.parent_ids:
             return []
 
-        # Use recursive CTE to get all ancestors
-        ancestor_cte = text(
-            """
-            WITH RECURSIVE role_ancestors AS (
-                -- Base: direct parents
-                SELECT id, parent_ids, 1 as level
-                FROM roles
-                WHERE id = ANY(:parent_ids::uuid[])
-                
-                UNION ALL
-                
-                -- Recursive: grandparents
-                SELECT r.id, r.parent_ids, ra.level + 1
-                FROM roles r
-                JOIN role_ancestors ra ON r.id = ANY(ra.parent_ids)
-            )
-            SELECT DISTINCT id FROM role_ancestors
-        """
-        )
-
-        results = await self.db.fetch_all(ancestor_cte, {"parent_ids": role.parent_ids})
-
-        ancestors = []
-        for row in results:
-            ancestor = await self.get_role(row["id"])
+        ancestors: List[Role] = []
+        seen: Set[UUID] = set()
+        stack = list(role.parent_ids)
+        while stack:
+            parent_id = stack.pop()
+            if parent_id in seen:
+                continue
+            seen.add(parent_id)
+            ancestor = await self.get_role(parent_id, role.tenant_id)
             if ancestor:
                 ancestors.append(ancestor)
+                stack.extend(ancestor.parent_ids)
 
         return ancestors
 
@@ -779,7 +749,7 @@ class RoleService:
         """Get tenant by ID"""
         stmt = select(tenants).where(tenants.c.id == tenant_id)
         result = await self.db.fetch_one(stmt)
-        from core.models import Tenant
+        from rbac.core.models import Tenant
 
         return Tenant.model_validate(result) if result else None
 

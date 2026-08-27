@@ -6,10 +6,10 @@ import asyncio
 from enum import Enum
 
 from .base import IdentityProvider, ExternalUser, IdentityProviderHook
-from services.role_service import RoleService
-from services.assignment_service import AssignmentService
-from core.exceptions import RoleNotFoundError
-from utils.logger import setup_logger
+from rbac.services.role_service import RoleService
+from rbac.services.assignment_service import AssignmentService
+from rbac.core.exceptions import RoleNotFoundError
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("sync_integration")
 

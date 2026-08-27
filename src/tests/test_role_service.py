@@ -2,7 +2,7 @@
 import pytest
 from uuid import uuid4
 
-from core.exceptions import (
+from rbac.core.exceptions import (
     RoleNotFoundError,
     CircularRoleHierarchyError,
     PermissionDeniedError,

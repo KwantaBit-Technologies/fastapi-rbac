@@ -5,13 +5,13 @@ from typing import Callable, Optional, Dict
 from uuid import UUID, uuid4
 import time
 
-from services.audit_service import (
+from rbac.services.audit_service import (
     AuditService,
     AuditAction,
     AuditResourceType,
     AuditSeverity,
 )
-from utils.logger import setup_logger
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("audit_middleware")
 

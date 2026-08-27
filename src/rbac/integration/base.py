@@ -3,9 +3,12 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime
+import os
 
-from pydantic import BaseModel
-from utils.logger import setup_logger
+os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
+
+from pydantic import BaseModel, Field
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("integration_base")
 
@@ -19,12 +22,12 @@ class ExternalUser(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     full_name: Optional[str] = None
-    groups: List[str] = []
-    roles: List[str] = []
-    attributes: Dict[str, Any] = {}
+    groups: List[str] = Field(default_factory=list)
+    roles: List[str] = Field(default_factory=list)
+    attributes: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     tenant_id: Optional[str] = None
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ExternalGroup(BaseModel):
@@ -33,10 +36,10 @@ class ExternalGroup(BaseModel):
     external_id: str
     name: str
     description: Optional[str] = None
-    members: List[str] = []
-    roles: List[str] = []
+    members: List[str] = Field(default_factory=list)
+    roles: List[str] = Field(default_factory=list)
     parent_id: Optional[str] = None
-    attributes: Dict[str, Any] = {}
+    attributes: Dict[str, Any] = Field(default_factory=dict)
 
 
 class IdentityProvider(ABC):

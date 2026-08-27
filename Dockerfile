@@ -1,39 +1,31 @@
-# Multi-stage build for smaller final image
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS base
 
-# Install uv
-RUN pip install uv
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
-
-# Build wheel
-RUN uv build
-
-# Final stage
-FROM python:3.11-slim
-
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+RUN pip install --no-cache-dir uv
 
-# Copy wheel from builder
+# Build the distributable wheel.
+FROM base AS builder
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN uv build
+
+# Runtime image for the example app.
+FROM base AS runtime
 COPY --from=builder /app/dist/*.whl .
+RUN pip install --no-cache-dir *.whl
+COPY src/examples/ ./examples/
 
-# Install the package
-RUN pip install *.whl
-
-# Copy examples
-COPY examples/ ./examples/
-
-# Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
@@ -43,3 +35,31 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Run the example app
 CMD ["uvicorn", "examples.basic_app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Test image with source tree and dev dependencies.
+FROM base AS test
+
+COPY pyproject.toml README.md uv.lock ./
+RUN pip install --no-cache-dir \
+    asyncpg \
+    fastapi \
+    httpx \
+    ldap3 \
+    passlib[argon2] \
+    pydantic \
+    PyJWT \
+    pytest \
+    pytest-asyncio \
+    pytest-benchmark \
+    pytest-cov \
+    python-dotenv \
+    python-jose[cryptography] \
+    redis \
+    sqlalchemy \
+    uvicorn
+
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir --no-deps -e .
+
+CMD ["python", "-m", "pytest", "src/tests", "-v", "--cov=rbac"]

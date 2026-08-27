@@ -5,15 +5,15 @@ import uvicorn
 from typing import Callable, Optional
 from datetime import datetime
 
-from core.database import Database
-from services.audit_service import (
+from rbac.core.database import Database
+from rbac.services.audit_service import (
     AuditEvent,
     AuditService,
     AuditAction,
     AuditResourceType,
     AuditContext,
 )
-from middleware.audit import AuditMiddleware, audit_logger, get_audit_service
+from rbac.middleware.audit import AuditMiddleware, audit_logger, get_audit_service
 
 app = FastAPI()
 

@@ -24,21 +24,21 @@ dev: install
 	uv pip install -e ".[dev,docs,all]"
 
 test:
-	pytest tests/ -v
+	pytest src/tests/ -v
 
 coverage:
-	pytest tests/ --cov=rbac --cov-report=term --cov-report=html
+	pytest src/tests/ --cov=rbac --cov-report=term --cov-report=html
 
 lint:
-	ruff check src/ tests/
-	black --check src/ tests/
-	isort --check src/ tests/
+	ruff check src/
+	black --check src/
+	isort --check src/
 	mypy src/
 
 format:
-	black src/ tests/
-	isort src/ tests/
-	ruff check src/ tests/ --fix
+	black src/
+	isort src/
+	ruff check src/ --fix
 
 clean:
 	rm -rf build/

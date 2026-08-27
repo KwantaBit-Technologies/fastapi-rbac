@@ -2,14 +2,29 @@
 from typing import Optional, List, Dict, Any, Union
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta, timezone
-from fastapi import Request
-from sqlalchemy import select, insert, delete, and_, or_, func, text, desc, asc
-from enum import Enum
-from pydantic import BaseModel, Field
+import os
 
-from core.database import Database, audit_logs
-from core.models import AuditLog
-from utils.logger import setup_logger
+os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
+
+from fastapi import Request
+from sqlalchemy import (
+    select,
+    insert,
+    delete,
+    and_,
+    or_,
+    func,
+    text,
+    desc,
+    asc,
+    literal_column,
+)
+from enum import Enum
+from pydantic import BaseModel, Field, ConfigDict
+
+from rbac.core.database import Database, audit_logs
+from rbac.core.models import AuditLog
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("audit_service")
 
@@ -85,9 +100,7 @@ class AuditEvent(BaseModel):
     status: str = "SUCCESS"
     error_message: Optional[str] = None
 
-    class Config:
-        use_enum_values = True
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class AuditService:
@@ -563,18 +576,16 @@ class AuditService:
         by_resource = await self.db.fetch_all(by_resource_stmt)
 
         # Events by severity
+        severity_expr = literal_column("metadata->>'severity'").label("severity")
         by_severity_stmt = (
-            select(
-                audit_logs.c.metadata["severity"].astext.label("severity"),
-                func.count().label("count"),
-            )
+            select(severity_expr, func.count().label("count"))
             .where(
                 and_(
                     audit_logs.c.tenant_id == tenant_id,
                     audit_logs.c.created_at >= start_date,
                 )
             )
-            .group_by(audit_logs.c.metadata["severity"].astext)
+            .group_by(severity_expr)
         )
 
         by_severity = await self.db.fetch_all(by_severity_stmt)

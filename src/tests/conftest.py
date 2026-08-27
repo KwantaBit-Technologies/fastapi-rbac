@@ -1,22 +1,28 @@
 # tests/conftest.py
 import pytest
 import asyncio
+import os
 from typing import AsyncGenerator, Generator
+from urllib.parse import urlparse
 from uuid import uuid4, UUID
 from datetime import datetime, timedelta
 import asyncpg
 from unittest.mock import Mock, AsyncMock
+from sqlalchemy import delete, insert
 
-from core.database import Database
-from core.models import Tenant, Role, Permission, UserRole
-from core.constants import ResourceType, PermissionAction, DEFAULT_ROLES
-from services.permission_service import PermissionService
-from services.role_service import RoleService
-from services.assignment_service import AssignmentService
-from services.audit_service import AuditService
+from rbac.core.database import Database, audit_logs, permissions, role_permissions, roles, tenants, user_roles
+from rbac.core.models import Tenant, Role, Permission, UserRole
+from rbac.core.constants import ResourceType, PermissionAction, DEFAULT_ROLES
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
+from rbac.services.assignment_service import AssignmentService
+from rbac.services.audit_service import AuditService
 
-# Test database URL - use a separate test database
-TEST_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/rbac_test"
+# Test database URL - use a separate test database.
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/rbac_test"),
+)
 
 
 @pytest.fixture(scope="session")
@@ -30,17 +36,20 @@ def event_loop():
 @pytest.fixture(scope="function")
 async def db() -> AsyncGenerator[Database, None]:
     """Create test database connection"""
+    parsed = urlparse(TEST_DATABASE_URL)
+    database_name = parsed.path.lstrip("/") or "rbac_test"
+
     # Create test database if it doesn't exist
     conn = await asyncpg.connect(
-        user="postgres",
-        password="postgres",
-        host="localhost",
-        port=5432,
+        user=parsed.username or os.getenv("POSTGRES_USER", "postgres"),
+        password=parsed.password or os.getenv("POSTGRES_PASSWORD", "postgres"),
+        host=parsed.hostname or os.getenv("POSTGRES_HOST", "localhost"),
+        port=parsed.port or int(os.getenv("POSTGRES_PORT", "5432")),
         database="postgres",
     )
 
     try:
-        await conn.execute("CREATE DATABASE rbac_test")
+        await conn.execute(f'CREATE DATABASE "{database_name}"')
     except asyncpg.DuplicateDatabaseError:
         pass
     finally:
@@ -50,14 +59,10 @@ async def db() -> AsyncGenerator[Database, None]:
     database = Database(TEST_DATABASE_URL, min_size=1, max_size=5)
     await database.connect()
 
-    # Clear all tables before each test
-    async with database.pool.acquire() as conn:
-        await conn.execute("TRUNCATE TABLE audit_logs CASCADE")
-        await conn.execute("TRUNCATE TABLE user_roles CASCADE")
-        await conn.execute("TRUNCATE TABLE role_permissions CASCADE")
-        await conn.execute("TRUNCATE TABLE roles CASCADE")
-        await conn.execute("TRUNCATE TABLE permissions CASCADE")
-        await conn.execute("TRUNCATE TABLE tenants CASCADE")
+    # Clear all tables before each test.
+    async with database.transaction() as conn:
+        for table in (audit_logs, user_roles, role_permissions, roles, permissions, tenants):
+            await conn.execute(delete(table))
 
     yield database
 
@@ -93,11 +98,23 @@ async def audit_service(db: Database) -> AuditService:
 
 
 @pytest.fixture
-async def test_tenant() -> Tenant:
+async def test_tenant(db: Database) -> Tenant:
     """Create test tenant"""
-    return Tenant(
+    tenant = Tenant(
         id=uuid4(), name="Test Tenant", domain="test.example.com", is_active=True
     )
+    await db.execute(
+        insert(tenants).values(
+            id=tenant.id,
+            name=tenant.name,
+            domain=tenant.domain,
+            is_active=tenant.is_active,
+            settings=tenant.settings,
+            created_at=tenant.created_at,
+            updated_at=tenant.updated_at,
+        )
+    )
+    return tenant
 
 
 @pytest.fixture
@@ -150,7 +167,10 @@ async def sample_permissions(
 
 @pytest.fixture
 async def sample_roles(
-    role_service: RoleService, sample_permissions: dict, test_tenant: Tenant
+    role_service: RoleService,
+    permission_service: PermissionService,
+    sample_permissions: dict,
+    test_tenant: Tenant,
 ) -> dict:
     """Create sample roles for testing"""
     roles = {}

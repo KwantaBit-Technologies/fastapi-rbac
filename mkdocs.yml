@@ -67,6 +67,7 @@ nav:
   - Home: index.md
   - API Reference: api-reference.md
   - Guides:
+    - Production: production-guide.md
     - Caching: caching.md
     - Multi-tenancy: multi-tenancy.md
     - Integration: integration.md

@@ -1,14 +1,14 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: ${POSTGRES_IMAGE:-postgres:15-alpine}
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: rbac
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-rbac}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,9 +18,9 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -41,33 +41,42 @@ services:
         condition: service_healthy
 
   app:
-    build: .
+    build:
+      context: .
+      target: runtime
+    env_file:
+      - .env
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rbac
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-rbac}
       REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-development-secret-key-change-in-production}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./examples:/app/examples
+      - ./src/examples:/app/examples
     command: uvicorn examples.basic_app:app --host 0.0.0.0 --port 8000 --reload
 
   test:
-    build: .
+    build:
+      context: .
+      target: test
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rbac_test
+      TEST_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_TEST_DB:-rbac_test}
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: pytest tests/ -v --cov=rbac
+    volumes:
+      - ./src:/app/src
+    command: python -m pytest src/tests -v --cov=rbac
 
 volumes:
   postgres_data:

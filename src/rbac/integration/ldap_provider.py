@@ -7,7 +7,7 @@ import hashlib
 import base64
 
 from .base import IdentityProvider, ExternalUser, ExternalGroup
-from utils.logger import setup_logger
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("ldap_provider")
 

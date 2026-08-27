@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import httpx
 import jwt
 from jwt.algorithms import RSAAlgorithm
-from utils.logger import setup_logger
+from rbac.utils.logger import setup_logger
 
 
 from .base import IdentityProvider, ExternalUser, ExternalGroup

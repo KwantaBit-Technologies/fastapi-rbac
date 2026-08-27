@@ -2,19 +2,19 @@
 from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, insert, update, delete, and_, or_, func, text
+from sqlalchemy import select, insert, update, delete, and_, or_, func, desc
 from enum import Enum
 
-from core.models import UserRole, Role, Permission
-from core.database import Database, user_roles, roles, tenants, audit_logs
-from core.exceptions import (
+from rbac.core.models import UserRole, Role, Permission
+from rbac.core.database import Database, user_roles, roles, tenants, audit_logs
+from rbac.core.exceptions import (
     RoleNotFoundError,
     PermissionDeniedError,
     TenantNotFoundError,
 )
 from .role_service import RoleService
 from .permission_service import PermissionService
-from utils.logger import setup_logger
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("Assignment_service")
 
@@ -133,48 +133,6 @@ class AssignmentValidator:
         new_role = await self.role_service.get_role(role_id, tenant_id)
         if not new_role:
             return False, f"Role {role_id} not found"
-
-        # Get user's current roles
-        stmt = select(user_roles.c.role_id).where(
-            and_(
-                user_roles.c.user_id == user_id,
-                user_roles.c.is_active == True,
-                or_(
-                    user_roles.c.expires_at.is_(None),
-                    user_roles.c.expires_at > func.current_timestamp(),
-                ),
-            )
-        )
-
-        if tenant_id:
-            stmt = stmt.where(user_roles.c.tenant_id == tenant_id)
-
-        current_roles = await self.db.fetch_all(stmt)
-        current_role_ids = {r["role_id"] for r in current_roles}
-
-        # Check if user has any children of this role (if this is a parent)
-        descendant_roles = await self.role_service._get_descendant_roles(role_id)
-        descendant_ids = {r.id for r in descendant_roles}
-
-        if descendant_ids.intersection(current_role_ids):
-            # User has child roles, so they must have this parent role
-            # This is already satisfied since we're assigning it
-            pass
-
-        # Check if this role has parents that the user doesn't have
-        if new_role.parent_ids:
-            missing_parents = []
-            for parent_id in new_role.parent_ids:
-                if parent_id not in current_role_ids:
-                    parent_role = await self.role_service.get_role(parent_id, tenant_id)
-                    if parent_role:
-                        missing_parents.append(parent_role.name)
-
-            if missing_parents:
-                return (
-                    False,
-                    f"Missing required parent roles: {', '.join(missing_parents)}",
-                )
 
         return True, "Valid"
 
@@ -419,7 +377,7 @@ class AssignmentService:
             action="ASSIGN",
             resource_type="user_role",
             resource_id=assignment.id,
-            new_value=assignment.model_dump(),
+            new_value=assignment.model_dump(mode="json"),
         )
 
         logger.info(f"Assigned role {role_id} to user {user_id}")
@@ -580,21 +538,25 @@ class AssignmentService:
         hard_delete: bool = False,
     ):
         """Revoke a role from a user"""
+        tenant_condition = (
+            user_roles.c.tenant_id == tenant_id
+            if tenant_id is not None
+            else user_roles.c.tenant_id.is_(None)
+        )
 
         if hard_delete:
-            # Permanently delete the assignment
-            deleted = await self.db.fetch_one(
-                """
-                DELETE FROM user_roles 
-                WHERE user_id = $1 
-                AND role_id = $2 
-                AND (tenant_id = $3 OR (tenant_id IS NULL AND $3 IS NULL))
-                RETURNING *
-                """,
-                user_id,
-                role_id,
-                tenant_id,
+            stmt = (
+                delete(user_roles)
+                .where(
+                    and_(
+                        user_roles.c.user_id == user_id,
+                        user_roles.c.role_id == role_id,
+                        tenant_condition,
+                    )
+                )
+                .returning(*user_roles.columns)
             )
+            deleted = await self.db.fetch_one(stmt)
 
             if deleted:
                 old_value = dict(deleted)
@@ -613,22 +575,20 @@ class AssignmentService:
                     f"Permanently deleted role {role_id} assignment for user {user_id}"
                 )
         else:
-            # Soft delete - mark as inactive
-            updated = await self.db.fetch_one(
-                """
-                UPDATE user_roles 
-                SET is_active = false, updated_at = $1
-                WHERE user_id = $2 
-                AND role_id = $3 
-                AND (tenant_id = $4 OR (tenant_id IS NULL AND $4 IS NULL))
-                AND is_active = true
-                RETURNING *
-                """,
-                datetime.utcnow(),
-                user_id,
-                role_id,
-                tenant_id,
+            stmt = (
+                update(user_roles)
+                .where(
+                    and_(
+                        user_roles.c.user_id == user_id,
+                        user_roles.c.role_id == role_id,
+                        tenant_condition,
+                        user_roles.c.is_active == True,
+                    )
+                )
+                .values(is_active=False, updated_at=datetime.now(timezone.utc))
+                .returning(*user_roles.columns)
             )
+            updated = await self.db.fetch_one(stmt)
 
             if updated:
                 # Audit log
@@ -661,24 +621,27 @@ class AssignmentService:
         if cache_key in self._assignment_cache:
             return self._assignment_cache[cache_key]
 
-        query = "SELECT * FROM user_roles WHERE user_id = $1"
-        params = [user_id]
-        param_index = 2
+        conditions = [user_roles.c.user_id == user_id]
 
         if tenant_id:
-            query += f" AND (tenant_id = ${param_index} OR tenant_id IS NULL)"
-            params.append(tenant_id)
-            param_index += 1
+            conditions.append(
+                or_(user_roles.c.tenant_id == tenant_id, user_roles.c.tenant_id.is_(None))
+            )
 
         if not include_inactive:
-            query += " AND is_active = true"
+            conditions.append(user_roles.c.is_active == True)
 
-        if not include_expired:
-            query += " AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)"
+        if not include_inactive and not include_expired:
+            conditions.append(
+                or_(
+                    user_roles.c.expires_at.is_(None),
+                    user_roles.c.expires_at > func.current_timestamp(),
+                )
+            )
 
-        query += " ORDER BY granted_at DESC"
+        stmt = select(user_roles).where(and_(*conditions)).order_by(desc(user_roles.c.granted_at))
 
-        results = await self.db.fetch_all(query, *params)
+        results = await self.db.fetch_all(stmt)
         assignments = [UserRole.model_validate(r) for r in results]
 
         # Cache the result
@@ -749,27 +712,29 @@ class AssignmentService:
     ) -> List[UserRole]:
         """Get all users assigned to a role"""
 
-        query = "SELECT * FROM user_roles WHERE role_id = $1"
-        params = [role_id]
-        param_index = 2
+        conditions = [user_roles.c.role_id == role_id]
 
         if tenant_id:
-            query += f" AND tenant_id = ${param_index}"
-            params.append(tenant_id)
-            param_index += 1
+            conditions.append(user_roles.c.tenant_id == tenant_id)
 
         if not include_inactive:
-            query += " AND is_active = true"
+            conditions.append(user_roles.c.is_active == True)
 
         if not include_expired:
-            query += " AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)"
+            conditions.append(
+                or_(
+                    user_roles.c.expires_at.is_(None),
+                    user_roles.c.expires_at > func.current_timestamp(),
+                )
+            )
 
-        query += (
-            f" ORDER BY granted_at DESC LIMIT ${param_index} OFFSET ${param_index + 1}"
-        )
-        params.extend([limit, offset])
+        stmt = select(user_roles).where(and_(*conditions)).order_by(desc(user_roles.c.granted_at))
+        if limit:
+            stmt = stmt.limit(limit)
+        if offset:
+            stmt = stmt.offset(offset)
 
-        results = await self.db.fetch_all(query, *params)
+        results = await self.db.fetch_all(stmt)
         return [UserRole.model_validate(r) for r in results]
 
     async def update_assignment_scope(
@@ -781,9 +746,7 @@ class AssignmentService:
         """Update the resource scope of an assignment"""
 
         # Get existing assignment
-        existing = await self.db.fetch_one(
-            "SELECT * FROM user_roles WHERE id = $1", assignment_id
-        )
+        existing = await self.db.fetch_one(select(user_roles).where(user_roles.c.id == assignment_id))
 
         if not existing:
             raise ValueError(f"Assignment not found: {assignment_id}")
@@ -792,15 +755,10 @@ class AssignmentService:
 
         # Update scope
         updated = await self.db.fetch_one(
-            """
-            UPDATE user_roles 
-            SET resource_scope = $1, updated_at = $2
-            WHERE id = $3
-            RETURNING *
-            """,
-            resource_scope,
-            datetime.utcnow(),
-            assignment_id,
+            update(user_roles)
+            .where(user_roles.c.id == assignment_id)
+            .values(resource_scope=resource_scope, updated_at=datetime.now(timezone.utc))
+            .returning(*user_roles.columns)
         )
 
         assignment = UserRole.model_validate(updated)
@@ -832,9 +790,7 @@ class AssignmentService:
         """Extend the expiration date of an assignment"""
 
         # Get existing assignment
-        existing = await self.db.fetch_one(
-            "SELECT * FROM user_roles WHERE id = $1", assignment_id
-        )
+        existing = await self.db.fetch_one(select(user_roles).where(user_roles.c.id == assignment_id))
 
         if not existing:
             raise ValueError(f"Assignment not found: {assignment_id}")
@@ -845,19 +801,14 @@ class AssignmentService:
         if existing["expires_at"]:
             new_expires_at = existing["expires_at"] + timedelta(days=additional_days)
         else:
-            new_expires_at = datetime.utcnow() + timedelta(days=additional_days)
+            new_expires_at = datetime.now(timezone.utc) + timedelta(days=additional_days)
 
         # Update expiration
         updated = await self.db.fetch_one(
-            """
-            UPDATE user_roles 
-            SET expires_at = $1, updated_at = $2
-            WHERE id = $3
-            RETURNING *
-            """,
-            new_expires_at,
-            datetime.utcnow(),
-            assignment_id,
+            update(user_roles)
+            .where(user_roles.c.id == assignment_id)
+            .values(expires_at=new_expires_at, updated_at=datetime.now(timezone.utc))
+            .returning(*user_roles.columns)
         )
 
         assignment = UserRole.model_validate(updated)
@@ -942,18 +893,20 @@ class AssignmentService:
         transferred_count = 0
         for assignment in assignments:
             try:
-                # Check if user already has the target role
+                tenant_condition = (
+                    user_roles.c.tenant_id == tenant_id
+                    if tenant_id is not None
+                    else user_roles.c.tenant_id.is_(None)
+                )
                 existing = await self.db.fetch_one(
-                    """
-                    SELECT id FROM user_roles 
-                    WHERE user_id = $1 
-                    AND role_id = $2 
-                    AND (tenant_id = $3 OR (tenant_id IS NULL AND $3 IS NULL))
-                    AND is_active = true
-                    """,
-                    assignment.user_id,
-                    to_role_id,
-                    tenant_id,
+                    select(user_roles.c.id).where(
+                        and_(
+                            user_roles.c.user_id == assignment.user_id,
+                            user_roles.c.role_id == to_role_id,
+                            tenant_condition,
+                            user_roles.c.is_active == True,
+                        )
+                    )
                 )
 
                 if not existing:
@@ -1006,30 +959,28 @@ class AssignmentService:
     ) -> List[Dict[str, Any]]:
         """Get assignments that will expire within the specified days"""
 
-        expiry_threshold = datetime.utcnow() + timedelta(days=days_threshold)
+        expiry_threshold = datetime.now(timezone.utc) + timedelta(days=days_threshold)
 
-        query = """
-            SELECT ur.*, r.name as role_name, u.email as user_email
-            FROM user_roles ur
-            JOIN roles r ON ur.role_id = r.id
-            JOIN users u ON ur.user_id = u.id
-            WHERE ur.expires_at IS NOT NULL
-            AND ur.expires_at <= $1
-            AND ur.expires_at > CURRENT_TIMESTAMP
-            AND ur.is_active = true
-        """
-        params = [expiry_threshold]
-        param_index = 2
-
+        conditions = [
+            user_roles.c.expires_at.isnot(None),
+            user_roles.c.expires_at <= expiry_threshold,
+            user_roles.c.expires_at > func.current_timestamp(),
+            user_roles.c.is_active == True,
+        ]
         if tenant_id:
-            query += f" AND ur.tenant_id = ${param_index}"
-            params.append(tenant_id)
-            param_index += 1
+            conditions.append(user_roles.c.tenant_id == tenant_id)
 
-        query += f" ORDER BY ur.expires_at LIMIT ${param_index}"
-        params.append(limit)
-
-        results = await self.db.fetch_all(query, *params)
+        stmt = (
+            select(
+                user_roles,
+                roles.c.name.label("role_name"),
+            )
+            .select_from(user_roles.join(roles, user_roles.c.role_id == roles.c.id))
+            .where(and_(*conditions))
+            .order_by(user_roles.c.expires_at)
+            .limit(limit)
+        )
+        results = await self.db.fetch_all(stmt)
         return [dict(r) for r in results]
 
     async def get_user_effective_roles(
@@ -1057,7 +1008,7 @@ class AssignmentService:
                     continue
 
             if role.id not in seen_role_ids:
-                role_data = role.model_dump()
+                role_data = role.model_dump(mode="json")
                 role_data["assignment_id"] = str(assignment.id)
                 role_data["resource_scope"] = assignment.resource_scope
                 role_data["expires_at"] = assignment.expires_at
@@ -1073,7 +1024,7 @@ class AssignmentService:
                             parent_id, tenant_id
                         )
                         if parent_role:
-                            parent_data = parent_role.model_dump()
+                            parent_data = parent_role.model_dump(mode="json")
                             parent_data["inherited_from"] = str(role.id)
                             parent_data["is_direct"] = False
                             effective_roles.append(parent_data)
@@ -1095,13 +1046,11 @@ class AssignmentService:
         if not role or not role.is_active:
             return False
 
-        # Check for conflicting assignments
-        assignments = await self.get_user_assignments(user_id, tenant_id)
-
-        # Check for role exclusivity if needed
-        # Add custom validation logic here based on your business rules
-
-        return True
+        try:
+            await self._validate_assignment(user_id, role_id, role, tenant_id, resource_scope)
+            return True
+        except PermissionDeniedError:
+            return False
 
     async def get_assignment_history(
         self,
@@ -1113,59 +1062,42 @@ class AssignmentService:
     ) -> List[Dict[str, Any]]:
         """Get audit history for assignments"""
 
-        query = """
-            SELECT * FROM audit_logs 
-            WHERE resource_type = 'user_role'
-        """
-        params = []
-        param_index = 1
+        conditions = [audit_logs.c.resource_type == "user_role"]
 
         if user_id:
-            query += f" AND user_id = ${param_index}"
-            params.append(user_id)
-            param_index += 1
+            conditions.append(audit_logs.c.user_id == user_id)
 
         if role_id:
-            # Need to search in new_value for role_id
-            query += f" AND new_value->>'role_id' = ${param_index}"
-            params.append(str(role_id))
-            param_index += 1
+            conditions.append(audit_logs.c.new_value["role_id"].astext == str(role_id))
 
         if tenant_id:
-            query += f" AND tenant_id = ${param_index}"
-            params.append(tenant_id)
-            param_index += 1
+            conditions.append(audit_logs.c.tenant_id == tenant_id)
 
-        query += (
-            f" ORDER BY created_at DESC LIMIT ${param_index} OFFSET ${param_index + 1}"
+        stmt = (
+            select(audit_logs)
+            .where(and_(*conditions))
+            .order_by(desc(audit_logs.c.created_at))
+            .limit(limit)
+            .offset(offset)
         )
-        params.extend([limit, offset])
 
-        results = await self.db.fetch_all(query, *params)
+        results = await self.db.fetch_all(stmt)
         return [dict(r) for r in results]
 
     async def cleanup_expired_assignments(self) -> int:
         """Clean up or mark expired assignments"""
 
-        # Soft delete expired assignments
-        result = await self.db.execute(
-            """
-            UPDATE user_roles 
-            SET is_active = false, updated_at = $1
-            WHERE expires_at < CURRENT_TIMESTAMP
-            AND is_active = true
-            """,
-            datetime.utcnow(),
+        stmt = (
+            update(user_roles)
+            .where(
+                and_(
+                    user_roles.c.expires_at < func.current_timestamp(),
+                    user_roles.c.is_active == True,
+                )
+            )
+            .values(is_active=False, updated_at=datetime.now(timezone.utc))
         )
-
-        # Parse the result to get count
-        # This depends on your database driver's return format
-        affected_count = 0
-        if result and hasattr(result, "split"):
-            try:
-                affected_count = int(result.split()[-1])
-            except:
-                pass
+        affected_count = await self.db.execute(stmt)
 
         if affected_count > 0:
             logger.info(f"Cleaned up {affected_count} expired assignments")
@@ -1177,81 +1109,60 @@ class AssignmentService:
     ) -> Dict[str, Any]:
         """Get statistics about assignments"""
 
-        # Total active assignments
-        total_active = await self.db.fetch_one(
-            """
-            SELECT COUNT(*) as count 
-            FROM user_roles 
-            WHERE is_active = true 
-            AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
-            """
-            + (" AND tenant_id = $1" if tenant_id else ""),
-            *([tenant_id] if tenant_id else []),
+        active_conditions = [
+            user_roles.c.is_active == True,
+            or_(
+                user_roles.c.expires_at.is_(None),
+                user_roles.c.expires_at > func.current_timestamp(),
+            ),
+        ]
+        if tenant_id:
+            active_conditions.append(user_roles.c.tenant_id == tenant_id)
+
+        total_active_count = await self.db.fetch_val(
+            select(func.count()).select_from(user_roles).where(and_(*active_conditions))
         )
 
-        # Assignments by role
         by_role = await self.db.fetch_all(
-            """
-            SELECT r.name as role_name, COUNT(*) as count
-            FROM user_roles ur
-            JOIN roles r ON ur.role_id = r.id
-            WHERE ur.is_active = true
-            AND (ur.expires_at IS NULL OR ur.expires_at > CURRENT_TIMESTAMP)
-            """
-            + (" AND ur.tenant_id = $1" if tenant_id else "")
-            + """
-            GROUP BY r.name
-            ORDER BY count DESC
-            LIMIT 10
-            """,
-            *([tenant_id] if tenant_id else []),
+            select(roles.c.name.label("role_name"), func.count().label("count"))
+            .select_from(user_roles.join(roles, user_roles.c.role_id == roles.c.id))
+            .where(and_(*active_conditions))
+            .group_by(roles.c.name)
+            .order_by(desc("count"))
+            .limit(10)
         )
 
-        # Expiring soon
-        expiring_soon = await self.db.fetch_one(
-            """
-            SELECT COUNT(*) as count
-            FROM user_roles
-            WHERE expires_at IS NOT NULL
-            AND expires_at <= $1
-            AND expires_at > CURRENT_TIMESTAMP
-            AND is_active = true
-            """
-            + (" AND tenant_id = $2" if tenant_id else ""),
-            datetime.utcnow() + timedelta(days=7),
-            *([tenant_id] if tenant_id else []),
+        expiring_conditions = [
+            user_roles.c.expires_at.isnot(None),
+            user_roles.c.expires_at <= datetime.now(timezone.utc) + timedelta(days=7),
+            user_roles.c.expires_at > func.current_timestamp(),
+            user_roles.c.is_active == True,
+        ]
+        if tenant_id:
+            expiring_conditions.append(user_roles.c.tenant_id == tenant_id)
+        expiring_soon_count = await self.db.fetch_val(
+            select(func.count()).select_from(user_roles).where(and_(*expiring_conditions))
         )
 
-        # Users with most roles
         top_users = await self.db.fetch_all(
-            """
-            SELECT user_id, COUNT(*) as role_count
-            FROM user_roles
-            WHERE is_active = true
-            AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
-            """
-            + (" AND tenant_id = $1" if tenant_id else "")
-            + """
-            GROUP BY user_id
-            ORDER BY role_count DESC
-            LIMIT 10
-            """,
-            *([tenant_id] if tenant_id else []),
+            select(user_roles.c.user_id, func.count().label("role_count"))
+            .where(and_(*active_conditions))
+            .group_by(user_roles.c.user_id)
+            .order_by(desc("role_count"))
+            .limit(10)
         )
 
         return {
-            "total_active_assignments": total_active["count"] if total_active else 0,
+            "total_active_assignments": total_active_count or 0,
             "assignments_by_role": [dict(r) for r in by_role],
-            "expiring_within_7_days": expiring_soon["count"] if expiring_soon else 0,
+            "expiring_within_7_days": expiring_soon_count or 0,
             "users_with_most_roles": [dict(u) for u in top_users],
             "tenant_id": str(tenant_id) if tenant_id else "global",
         }
 
     async def _get_tenant(self, tenant_id: UUID) -> Optional[Any]:
         """Get tenant by ID"""
-        result = await self.db.fetch_one(
-            "SELECT * FROM tenants WHERE id = $1", tenant_id
-        )
+        result = await self.db.fetch_one(select(tenants).where(tenants.c.id == tenant_id))
         from ..core.models import Tenant
 
         return Tenant.model_validate(result) if result else None
@@ -1269,20 +1180,16 @@ class AssignmentService:
         """Create audit log entry"""
         try:
             await self.db.execute(
-                """
-                INSERT INTO audit_logs (
-                    user_id, tenant_id, action, resource_type, 
-                    resource_id, old_value, new_value, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                """,
-                user_id,
-                tenant_id,
-                action,
-                resource_type,
-                resource_id,
-                old_value,
-                new_value,
-                datetime.utcnow(),
+                insert(audit_logs).values(
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    action=action,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    old_value=old_value,
+                    new_value=new_value,
+                    created_at=datetime.now(timezone.utc),
+                )
             )
         except Exception as e:
             logger.error(f"Failed to create audit log: {e}")

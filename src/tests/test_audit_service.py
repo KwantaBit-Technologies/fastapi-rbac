@@ -1,14 +1,16 @@
 # tests/test_audit_service.py
 import pytest
 from uuid import uuid4
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import insert
 
-from services.audit_service import (
+from rbac.services.audit_service import (
     AuditEvent,
     AuditAction,
     AuditResourceType,
     AuditSeverity,
 )
+from rbac.core.database import audit_logs
 
 pytestmark = pytest.mark.asyncio
 
@@ -169,7 +171,7 @@ class TestAuditService:
         assert all(l.user_id == test_user_id for l in user_logs)
 
         # Date range
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         recent_logs = await audit_service.query_logs(
             start_date=now - timedelta(hours=1),
             end_date=now + timedelta(hours=1),
@@ -244,17 +246,20 @@ class TestAuditService:
     async def test_get_statistics(self, audit_service, test_user_id, test_tenant):
         """Test getting audit statistics"""
         # Create logs over time
-        base_time = datetime.utcnow() - timedelta(days=5)
+        base_time = datetime.now(timezone.utc) - timedelta(days=5)
 
         for day in range(5):
             for hour in range(24):
                 if hour % 6 == 0:  # Create log every 6 hours
-                    await audit_service.log_action(
-                        user_id=test_user_id,
-                        tenant_id=test_tenant.id,
-                        action=AuditAction.ACCESS,
-                        resource_type=AuditResourceType.API,
-                        description=f"Log day {day} hour {hour}",
+                    await audit_service.log(
+                        AuditEvent(
+                            timestamp=base_time + timedelta(days=day, hours=hour),
+                            user_id=test_user_id,
+                            tenant_id=test_tenant.id,
+                            action=AuditAction.ACCESS,
+                            resource_type=AuditResourceType.API,
+                            description=f"Log day {day} hour {hour}",
+                        )
                     )
 
         # Get statistics
@@ -294,27 +299,24 @@ class TestAuditService:
     async def test_cleanup_old_logs(self, audit_service, test_user_id, test_tenant):
         """Test cleaning up old logs"""
         # Create old log
-        old_time = datetime.utcnow() - timedelta(days=100)
+        old_time = datetime.now(timezone.utc) - timedelta(days=100)
 
         # Manually insert old log (bypassing service)
-        async with audit_service.db.pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO audit_logs (user_id, tenant_id, action, resource_type, created_at)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                test_user_id,
-                test_tenant.id,
-                "TEST",
-                "test",
-                old_time,
+        await audit_service.db.execute(
+            insert(audit_logs).values(
+                user_id=test_user_id,
+                tenant_id=test_tenant.id,
+                action="TEST",
+                resource_type="test",
+                created_at=old_time,
             )
+        )
 
         # Create recent log
         await audit_service.log_action(
             user_id=test_user_id,
             tenant_id=test_tenant.id,
-            action=AuditAction.TEST,
+            action=AuditAction.CONFIG_CHANGE,
             resource_type=AuditResourceType.SYSTEM,
         )
 
@@ -326,7 +328,8 @@ class TestAuditService:
         # Check remaining logs
         remaining = await audit_service.query_logs(limit=10)
         assert all(
-            l.created_at > datetime.utcnow() - timedelta(days=30) for l in remaining
+            l.created_at > datetime.now(timezone.utc) - timedelta(days=30)
+            for l in remaining
         )
 
     async def test_calculate_changes(self, audit_service):

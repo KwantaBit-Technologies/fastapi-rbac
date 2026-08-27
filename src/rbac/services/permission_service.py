@@ -2,12 +2,12 @@
 from typing import Optional, List, Dict, Any, Set
 from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select, insert, update, delete, and_, or_, func, text
+from sqlalchemy import select, insert, update, delete, and_, or_, func
 from sqlalchemy.sql import exists
 
-from core.models import Permission, Role, UserRole, Tenant
-from core.database import Database
-from core.database import (
+from rbac.core.models import Permission, Role, UserRole, Tenant
+from rbac.core.database import Database
+from rbac.core.database import (
     tenants,
     permissions,
     roles,
@@ -15,14 +15,14 @@ from core.database import (
     user_roles,
     audit_logs,
 )
-from core.exceptions import (
+from rbac.core.exceptions import (
     PermissionNotFoundError,
     PermissionDeniedError,
     TenantNotFoundError,
     RoleNotFoundError,
 )
-from core.constants import PermissionAction, ResourceType
-from utils.logger import setup_logger
+from rbac.core.constants import PermissionAction, ResourceType
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("PERMISSION_SERVICE")
 
@@ -45,6 +45,7 @@ class PermissionService:
         description: Optional[str] = None,
         tenant_id: Optional[UUID] = None,
         created_by: Optional[UUID] = None,
+        is_system: bool = False,
     ) -> Permission:
         """Create a new permission"""
         # Check if tenant exists if tenant_id provided
@@ -91,7 +92,7 @@ class PermissionService:
                 scope=scope,
                 description=description,
                 tenant_id=tenant_id,
-                is_system=False,
+                is_system=is_system,
                 created_at=now,
                 updated_at=now,
             )
@@ -111,7 +112,7 @@ class PermissionService:
             action="CREATE",
             resource_type="permission",
             resource_id=permission.id,
-            new_value=permission.model_dump(),
+            new_value=permission.model_dump(mode="json"),
         )
 
         logger.info(f"Created permission: {permission.permission_string}")
@@ -220,8 +221,8 @@ class PermissionService:
                 action="UPDATE",
                 resource_type="permission",
                 resource_id=permission_id,
-                old_value=existing.model_dump(),
-                new_value=updated.model_dump(),
+                old_value=existing.model_dump(mode="json"),
+                new_value=updated.model_dump(mode="json"),
             )
 
             logger.info(f"Updated permission: {updated.permission_string}")
@@ -272,7 +273,7 @@ class PermissionService:
             action="DELETE",
             resource_type="permission",
             resource_id=permission_id,
-            old_value=existing.model_dump(),
+            old_value=existing.model_dump(mode="json"),
         )
 
         logger.info(f"Deleted permission: {existing.permission_string}")
@@ -357,8 +358,30 @@ class PermissionService:
             return True
 
         # Check scoped permissions if scope provided
-        if resource_scope and len(parts) > 2:
-            scope_key = f"{resource}:{action}:{resource_scope.get('id')}"
+        if resource_scope:
+            scope_id = resource_scope.get("id")
+            if scope_id is not None:
+                scoped_action = f"{resource}:{action}:{scope_id}"
+                scoped_resource_wildcard = f"*:{action}:{scope_id}"
+                scoped_full_wildcard = f"*:*:{scope_id}"
+                if (
+                    scoped_action in user_permissions
+                    or scoped_resource_wildcard in user_permissions
+                    or scoped_full_wildcard in user_permissions
+                    and any(
+                        permission.startswith(f"{resource}:{action}:")
+                        for permission in user_permissions
+                    )
+                ):
+                    return True
+
+            if len(parts) > 2:
+                scope_key = f"{resource}:{action}:{resource_scope.get('id')}"
+                if scope_key in user_permissions:
+                    return True
+
+        if len(parts) > 2:
+            scope_key = f"{resource}:{action}:{parts[2]}"
             if scope_key in user_permissions:
                 return True
 
@@ -374,40 +397,29 @@ class PermissionService:
         if cache_key in self._permission_cache:
             return self._permission_cache[cache_key]
 
-        # Get all roles assigned to user with CTE for role hierarchy
-        role_hierarchy_cte = text(
-            """
-            WITH RECURSIVE role_tree AS (
-                -- Base: roles directly assigned to user
-                SELECT r.id, r.parent_ids, 1 as level
-                FROM roles r
-                JOIN user_roles ur ON r.id = ur.role_id
-                WHERE ur.user_id = :user_id 
-                AND ur.is_active = true
-                AND (ur.expires_at IS NULL OR ur.expires_at > CURRENT_TIMESTAMP)
-                AND (:tenant_id::uuid IS NULL OR ur.tenant_id = :tenant_id)
-                
-                UNION ALL
-                
-                -- Recursive: parent roles
-                SELECT r.id, r.parent_ids, rt.level + 1
-                FROM roles r
-                JOIN role_tree rt ON r.id = ANY(rt.parent_ids)
-                WHERE r.is_active = true
+        assignment_conditions = [
+            user_roles.c.user_id == user_id,
+            user_roles.c.is_active == True,
+            or_(
+                user_roles.c.expires_at.is_(None),
+                user_roles.c.expires_at > func.current_timestamp(),
+            ),
+        ]
+        if tenant_id:
+            assignment_conditions.append(user_roles.c.tenant_id == tenant_id)
+
+        assigned_rows = await self.db.fetch_all(
+            select(user_roles.c.role_id, user_roles.c.resource_scope).where(
+                and_(*assignment_conditions)
             )
-            SELECT DISTINCT id FROM role_tree
-        """
         )
 
-        # Execute CTE to get all role IDs
-        all_roles = await self.db.fetch_all(
-            role_hierarchy_cte, {"user_id": user_id, "tenant_id": tenant_id}
-        )
-
-        if not all_roles:
+        if not assigned_rows:
             return set()
 
-        role_ids = [r["id"] for r in all_roles]
+        role_ids = await self._resolve_inherited_role_ids(
+            {row["role_id"] for row in assigned_rows}, tenant_id
+        )
 
         # Get all permissions for these roles
         perm_query = (
@@ -427,31 +439,57 @@ class PermissionService:
         # Convert to permission strings
         permission_strings = set()
         for p in permissions_list:
-            if p["scope"]:
-                permission_strings.add(f"{p['resource']}:{p['action']}:{p['scope']}")
-            else:
-                permission_strings.add(f"{p['resource']}:{p['action']}")
+            permission_strings.add(
+                self._permission_string(p["resource"], p["action"], p["scope"])
+            )
 
         # Get resource-scoped permissions from user_roles
-        scope_conditions = [
-            user_roles.c.user_id == user_id,
-            user_roles.c.is_active == True,
-        ]
-        if tenant_id:
-            scope_conditions.append(user_roles.c.tenant_id == tenant_id)
-
-        scope_query = select(user_roles.c.resource_scope).where(and_(*scope_conditions))
-
-        scopes = await self.db.fetch_all(scope_query)
-        for scope in scopes:
-            if scope["resource_scope"]:
-                for resource_id in scope["resource_scope"].values():
+        for assignment in assigned_rows:
+            if assignment["resource_scope"]:
+                for resource_id in assignment["resource_scope"].values():
                     permission_strings.add(f"*:*:{resource_id}")
 
         # Cache the result
         self._permission_cache[cache_key] = permission_strings
 
         return permission_strings
+
+    def _permission_string(
+        self, resource: str, action: str, scope: Optional[str] = None
+    ) -> str:
+        """Build a normalized permission string from stored column values."""
+        if resource == ResourceType.ALL.value and action == PermissionAction.MANAGE.value:
+            return "*:*" if not scope else f"*:*:{scope}"
+        if scope:
+            return f"{resource}:{action}:{scope}"
+        return f"{resource}:{action}"
+
+    async def _resolve_inherited_role_ids(
+        self, direct_role_ids: Set[UUID], tenant_id: Optional[UUID] = None
+    ) -> List[UUID]:
+        """Resolve direct role IDs plus all ancestor role IDs."""
+        conditions = [roles.c.is_active == True]
+        if tenant_id:
+            conditions.append(
+                or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None))
+            )
+
+        rows = await self.db.fetch_all(
+            select(roles.c.id, roles.c.parent_ids).where(and_(*conditions))
+        )
+        parent_map = {row["id"]: row["parent_ids"] or [] for row in rows}
+
+        resolved: Set[UUID] = set()
+        stack = list(direct_role_ids)
+        while stack:
+            role_id = stack.pop()
+            if role_id in resolved:
+                continue
+            resolved.add(role_id)
+            for parent_id in parent_map.get(role_id, []):
+                stack.append(parent_id if isinstance(parent_id, UUID) else UUID(str(parent_id)))
+
+        return list(resolved)
 
     async def grant_permission_to_role(
         self, role_id: UUID, permission_id: UUID, granted_by: Optional[UUID] = None

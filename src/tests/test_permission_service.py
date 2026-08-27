@@ -3,12 +3,12 @@ import pytest
 from uuid import uuid4
 from datetime import datetime
 
-from core.exceptions import (
+from rbac.core.exceptions import (
     PermissionNotFoundError,
     PermissionDeniedError,
     TenantNotFoundError,
 )
-from core.constants import ResourceType, PermissionAction
+from rbac.core.constants import ResourceType, PermissionAction
 
 pytestmark = pytest.mark.asyncio
 
@@ -296,6 +296,7 @@ class TestPermissionService:
         assignment_service,
         test_user_id,
         test_tenant,
+        sample_roles,
         sample_permissions,
     ):
         """Test wildcard permission matching"""
@@ -383,6 +384,7 @@ class TestPermissionService:
         assignment_service,
         test_user_id,
         test_tenant,
+        sample_roles,
         sample_permissions,
     ):
         """Test permission cache invalidation"""

@@ -1,7 +1,12 @@
 # rbac/dependencies/auth.py
 from typing import Optional, List, Callable, Awaitable, Any, Dict, Union
 from uuid import UUID
+import os
+
+os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
+
 from fastapi import Depends, HTTPException, Security, Request, status
+from pydantic import ConfigDict
 from fastapi.security import (
     HTTPBearer,
     HTTPAuthorizationCredentials,
@@ -13,10 +18,10 @@ from functools import wraps
 import inspect
 import time
 
-from core.exceptions import PermissionDeniedError
-from services.permission_service import PermissionService
-from services.assignment_service import AssignmentService
-from utils.logger import setup_logger
+from rbac.core.exceptions import PermissionDeniedError
+from rbac.services.permission_service import PermissionService
+from rbac.services.assignment_service import AssignmentService
+from rbac.utils.logger import setup_logger
 
 logger = setup_logger("AUTH")
 
@@ -51,8 +56,7 @@ class UserContext(BaseModel):
     is_active: bool = True
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def has_permission(
         self, permission: str, resource_scope: Optional[Dict] = None

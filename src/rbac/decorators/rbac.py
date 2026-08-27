@@ -1,13 +1,14 @@
 # rbac/decorators/rbac.py
-from typing import List, Optional, Callable, Any, Type, Union, Dict
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
 from uuid import UUID
-from fastapi import HTTPException, Request, status, Depends
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from rbac.core.exceptions import PermissionDeniedError
-from rbac.services.permission_service import PermissionService
+from rbac.dependencies.auth import RBACDependencies, UserContext
 from rbac.services.assignment_service import AssignmentService
-from rbac.dependencies.auth import UserContext, RBACDependencies
+from rbac.services.permission_service import PermissionService
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("RBAC DECORATORS")
@@ -86,10 +87,7 @@ class RBACDecorators:
                             missing.append(permission)
 
                     if missing:
-                        error_msg = (
-                            message
-                            or f"Missing required permissions: {', '.join(missing)}"
-                        )
+                        error_msg = message or f"Missing required permissions: {', '.join(missing)}"
                         raise HTTPException(
                             status_code=status_code,
                             detail=error_msg,
@@ -108,8 +106,7 @@ class RBACDecorators:
 
                     if not has_any:
                         error_msg = (
-                            message
-                            or f"None of the required permissions found: {permissions}"
+                            message or f"None of the required permissions found: {permissions}"
                         )
                         raise HTTPException(
                             status_code=status_code,
@@ -178,9 +175,7 @@ class RBACDecorators:
                         )
                 else:
                     if not user_roles.intersection(required_roles):
-                        error_msg = (
-                            message or f"User must have one of these roles: {roles}"
-                        )
+                        error_msg = message or f"User must have one of these roles: {roles}"
                         raise HTTPException(
                             status_code=status_code,
                             detail=error_msg,
@@ -251,12 +246,10 @@ class RBACDecorators:
                             return await func(self, *args, **kwargs)
 
                         # Check for required permission
-                        has_permission = (
-                            await self.permission_service.check_user_permission(
-                                user_id=user.id,
-                                required_permission=permission,
-                                tenant_id=user.tenant_id,
-                            )
+                        has_permission = await self.permission_service.check_user_permission(
+                            user_id=user.id,
+                            required_permission=permission,
+                            tenant_id=user.tenant_id,
                         )
 
                         if has_permission:
@@ -536,10 +529,6 @@ def require_user() -> UserContext:
     return user
 
 
-# Helper function to create RBAC router
-from fastapi import APIRouter, Depends
-
-
 def create_rbac_router(
     prefix: str = "",
     tags: Optional[List[str]] = None,
@@ -568,9 +557,7 @@ def create_rbac_router(
     router_dependencies = dependencies or []
 
     if permissions and rbac_dependencies:
-        router_dependencies.append(
-            Depends(rbac_dependencies.require_permissions(permissions))
-        )
+        router_dependencies.append(Depends(rbac_dependencies.require_permissions(permissions)))
 
     if roles and rbac_dependencies:
         router_dependencies.append(Depends(rbac_dependencies.require_roles(roles)))

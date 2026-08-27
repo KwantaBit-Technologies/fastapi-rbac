@@ -1,16 +1,16 @@
 # tests/test_audit_service.py
-import pytest
-from uuid import uuid4
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
 from sqlalchemy import insert
 
-from rbac.services.audit_service import (
-    AuditEvent,
-    AuditAction,
-    AuditResourceType,
-    AuditSeverity,
-)
 from rbac.core.database import audit_logs
+from rbac.services.audit_service import (
+    AuditAction,
+    AuditEvent,
+    AuditResourceType,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -141,7 +141,7 @@ class TestAuditService:
         logs = await audit_service.log_batch(events)
 
         assert len(logs) == 5
-        for i, log in enumerate(logs):
+        for _i, log in enumerate(logs):
             assert log.user_id == test_user_id
 
     async def test_query_logs(self, audit_service, test_user_id, test_tenant):
@@ -161,9 +161,7 @@ class TestAuditService:
         assert len(logs) >= 10
 
         # Filter by action
-        create_logs = await audit_service.query_logs(
-            action=AuditAction.CREATE, limit=20
-        )
+        create_logs = await audit_service.query_logs(action=AuditAction.CREATE, limit=20)
         assert all(l.action == "CREATE" for l in create_logs)
 
         # Filter by user
@@ -220,9 +218,7 @@ class TestAuditService:
         assert len(trail) >= 8
         assert all(l.user_id == test_user_id for l in trail)
 
-    async def test_get_tenant_audit_summary(
-        self, audit_service, test_user_id, test_tenant
-    ):
+    async def test_get_tenant_audit_summary(self, audit_service, test_user_id, test_tenant):
         """Test getting tenant audit summary"""
         # Create logs for tenant
         for i in range(20):
@@ -235,9 +231,7 @@ class TestAuditService:
             )
 
         # Get summary
-        summary = await audit_service.get_tenant_audit_summary(
-            tenant_id=test_tenant.id, days=1
-        )
+        summary = await audit_service.get_tenant_audit_summary(tenant_id=test_tenant.id, days=1)
 
         assert summary["total_events"] >= 20
         assert len(summary["by_action"]) >= 2
@@ -282,16 +276,12 @@ class TestAuditService:
             )
 
         # Export as JSON
-        json_export = await audit_service.export_logs(
-            tenant_id=test_tenant.id, format="json"
-        )
+        json_export = await audit_service.export_logs(tenant_id=test_tenant.id, format="json")
 
         assert len(json_export) == 5
 
         # Export as CSV
-        csv_export = await audit_service.export_logs(
-            tenant_id=test_tenant.id, format="csv"
-        )
+        csv_export = await audit_service.export_logs(tenant_id=test_tenant.id, format="csv")
 
         assert isinstance(csv_export, str)
         assert "action,resource_type" in csv_export
@@ -328,8 +318,7 @@ class TestAuditService:
         # Check remaining logs
         remaining = await audit_service.query_logs(limit=10)
         assert all(
-            l.created_at > datetime.now(timezone.utc) - timedelta(days=30)
-            for l in remaining
+            l.created_at > datetime.now(timezone.utc) - timedelta(days=30) for l in remaining
         )
 
     async def test_calculate_changes(self, audit_service):

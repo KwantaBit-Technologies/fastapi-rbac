@@ -1,14 +1,13 @@
 # tests/test_permission_service.py
-import pytest
 from uuid import uuid4
-from datetime import datetime
 
+import pytest
+
+from rbac.core.constants import PermissionAction, ResourceType
 from rbac.core.exceptions import (
-    PermissionNotFoundError,
     PermissionDeniedError,
     TenantNotFoundError,
 )
-from rbac.core.constants import ResourceType, PermissionAction
 
 pytestmark = pytest.mark.asyncio
 
@@ -91,9 +90,7 @@ class TestPermissionService:
         )
 
         # Get by string
-        fetched = await permission_service.get_permission_by_string(
-            "user:read", test_tenant.id
-        )
+        fetched = await permission_service.get_permission_by_string("user:read", test_tenant.id)
 
         assert fetched is not None
         assert fetched.permission_string == "user:read"
@@ -130,9 +127,7 @@ class TestPermissionService:
         )
 
         with pytest.raises(PermissionDeniedError):
-            await permission_service.update_permission(
-                permission_id=permission.id, name="New Name"
-            )
+            await permission_service.update_permission(permission_id=permission.id, name="New Name")
 
     async def test_delete_permission(self, permission_service, test_tenant):
         """Test deleting permission"""
@@ -164,9 +159,7 @@ class TestPermissionService:
         )
 
         # Create role and assign permission
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         await permission_service.grant_permission_to_role(
             role_id=role.id, permission_id=permission.id
@@ -218,9 +211,7 @@ class TestPermissionService:
         assert len(read_perms) == 2
         assert all(p.action == PermissionAction.READ for p in read_perms)
 
-    async def test_grant_and_revoke_permission(
-        self, permission_service, role_service, test_tenant
-    ):
+    async def test_grant_and_revoke_permission(self, permission_service, role_service, test_tenant):
         """Test granting and revoking permissions to/from role"""
         # Create permission and role
         permission = await permission_service.create_permission(
@@ -230,9 +221,7 @@ class TestPermissionService:
             tenant_id=test_tenant.id,
         )
 
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         # Grant permission
         await permission_service.grant_permission_to_role(
@@ -301,9 +290,7 @@ class TestPermissionService:
     ):
         """Test wildcard permission matching"""
         # Create role with wildcard permission
-        role = await role_service.create_role(
-            name="Wildcard Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Wildcard Role", tenant_id=test_tenant.id)
 
         await permission_service.grant_permission_to_role(
             role_id=role.id, permission_id=sample_permissions["*:*"].id
@@ -341,9 +328,7 @@ class TestPermissionService:
         )
 
         # Create role and assign permission
-        role = await role_service.create_role(
-            name="Doctor Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Doctor Role", tenant_id=test_tenant.id)
 
         await permission_service.grant_permission_to_role(
             role_id=role.id, permission_id=permission.id

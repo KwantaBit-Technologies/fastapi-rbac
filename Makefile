@@ -65,7 +65,7 @@ serve-docs:
 	mkdocs serve
 
 docker-build:
-	docker build -t fastapi-rbac .
+	docker build -t kb-fastapi-rbac .
 
 docker-up:
 	docker-compose up -d

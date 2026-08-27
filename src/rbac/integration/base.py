@@ -1,13 +1,14 @@
 # rbac/integration/base.py
-from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any, Tuple
-from uuid import UUID
-from datetime import datetime
 import os
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
 
 from pydantic import BaseModel, Field
+
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("integration_base")
@@ -87,9 +88,7 @@ class IdentityProviderHook:
         """Hook called after creating a user"""
         pass
 
-    async def before_user_update(
-        self, user: ExternalUser, local_user_id: UUID
-    ) -> ExternalUser:
+    async def before_user_update(self, user: ExternalUser, local_user_id: UUID) -> ExternalUser:
         """Hook called before updating a user"""
         return user
 

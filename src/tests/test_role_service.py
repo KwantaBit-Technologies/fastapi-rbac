@@ -1,9 +1,8 @@
 # tests/test_role_service.py
+
 import pytest
-from uuid import uuid4
 
 from rbac.core.exceptions import (
-    RoleNotFoundError,
     CircularRoleHierarchyError,
     PermissionDeniedError,
 )
@@ -38,9 +37,7 @@ class TestRoleService:
 
     async def test_get_role(self, role_service, test_tenant):
         """Test getting role by ID"""
-        created = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        created = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         fetched = await role_service.get_role(created.id, test_tenant.id)
 
@@ -50,9 +47,7 @@ class TestRoleService:
 
     async def test_get_role_by_name(self, role_service, test_tenant):
         """Test getting role by name"""
-        created = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        created = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         fetched = await role_service.get_role_by_name("Test Role", test_tenant.id)
 
@@ -61,9 +56,7 @@ class TestRoleService:
 
     async def test_update_role(self, role_service, test_tenant):
         """Test updating role"""
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         updated = await role_service.update_role(
             role_id=role.id,
@@ -78,9 +71,7 @@ class TestRoleService:
 
     async def test_delete_role(self, role_service, test_tenant):
         """Test deleting role"""
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         await role_service.delete_role(role.id)
 
@@ -92,9 +83,7 @@ class TestRoleService:
     ):
         """Test deleting role with assigned users"""
         # Create role
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         # Assign user
         await assignment_service.assign_role_to_user(
@@ -114,18 +103,14 @@ class TestRoleService:
         await role_service.delete_role(role.id, transfer_to_role_id=transfer_role.id)
 
         # Check that user was transferred
-        user_roles = await assignment_service.get_user_assignments(
-            test_user_id, test_tenant.id
-        )
+        user_roles = await assignment_service.get_user_assignments(test_user_id, test_tenant.id)
         assert len(user_roles) == 1
         assert user_roles[0].role_id == transfer_role.id
 
     async def test_role_hierarchy(self, role_service, test_tenant):
         """Test role inheritance"""
         # Create base role
-        base_role = await role_service.create_role(
-            name="Base Role", tenant_id=test_tenant.id
-        )
+        base_role = await role_service.create_role(name="Base Role", tenant_id=test_tenant.id)
 
         # Create child role
         child_role = await role_service.create_role(
@@ -145,7 +130,7 @@ class TestRoleService:
 
         descendants = await role_service._get_descendant_roles(base_role.id)
         assert len(descendants) == 2
-        assert set(d.id for d in descendants) == {child_role.id, grandchild_role.id}
+        assert {d.id for d in descendants} == {child_role.id, grandchild_role.id}
 
     async def test_circular_hierarchy(self, role_service, test_tenant):
         """Test preventing circular role hierarchy"""
@@ -164,9 +149,7 @@ class TestRoleService:
     ):
         """Test that roles inherit permissions from parents"""
         # Create base role with permissions
-        base_role = await role_service.create_role(
-            name="Base Role", tenant_id=test_tenant.id
-        )
+        base_role = await role_service.create_role(name="Base Role", tenant_id=test_tenant.id)
 
         await permission_service.grant_permission_to_role(
             role_id=base_role.id, permission_id=sample_permissions["user:read"].id
@@ -178,9 +161,7 @@ class TestRoleService:
         )
 
         # Check inherited permissions
-        child_perms = await role_service.get_role_permissions(
-            child_role.id, include_inherited=True
-        )
+        child_perms = await role_service.get_role_permissions(child_role.id, include_inherited=True)
         assert len(child_perms) == 1
         assert child_perms[0].id == sample_permissions["user:read"].id
 
@@ -298,9 +279,7 @@ class TestRoleService:
     ):
         """Test bulk assigning permissions to role"""
         # Create role
-        role = await role_service.create_role(
-            name="Test Role", tenant_id=test_tenant.id
-        )
+        role = await role_service.create_role(name="Test Role", tenant_id=test_tenant.id)
 
         # Bulk assign permissions
         perm_ids = [
@@ -309,9 +288,7 @@ class TestRoleService:
             sample_permissions["role:read"].id,
         ]
 
-        await role_service.bulk_assign_permissions(
-            role_id=role.id, permission_ids=perm_ids
-        )
+        await role_service.bulk_assign_permissions(role_id=role.id, permission_ids=perm_ids)
 
         # Check assignments
         role_perms = await role_service.get_role_permissions(role.id)

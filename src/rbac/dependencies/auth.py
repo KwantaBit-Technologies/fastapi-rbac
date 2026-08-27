@@ -1,26 +1,24 @@
 # rbac/dependencies/auth.py
-from typing import Optional, List, Callable, Awaitable, Any, Dict, Union
-from uuid import UUID
 import os
+from typing import Any, Callable, Dict, List, Optional
+from uuid import UUID
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
 
-from fastapi import Depends, HTTPException, Security, Request, status
-from pydantic import ConfigDict
+import time
+from functools import wraps
+
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import (
-    HTTPBearer,
     HTTPAuthorizationCredentials,
+    HTTPBearer,
     OAuth2PasswordBearer,
 )
 from jose import JWTError, jwt
-from pydantic import BaseModel, Field, ValidationError
-from functools import wraps
-import inspect
-import time
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from rbac.core.exceptions import PermissionDeniedError
-from rbac.services.permission_service import PermissionService
 from rbac.services.assignment_service import AssignmentService
+from rbac.services.permission_service import PermissionService
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("AUTH")
@@ -58,9 +56,7 @@ class UserContext(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def has_permission(
-        self, permission: str, resource_scope: Optional[Dict] = None
-    ) -> bool:
+    def has_permission(self, permission: str, resource_scope: Optional[Dict] = None) -> bool:
         """Check if user has a specific permission"""
         # Superuser has all permissions
         if self.is_superuser:
@@ -124,9 +120,7 @@ class RBACDependencies:
         self.secret_key = secret_key
         self.algorithm = algorithm
         self.token_expiry_seconds = token_expiry_seconds
-        self._user_cache: Dict[str, tuple[UserContext, float]] = (
-            {}
-        )  # token -> (user, expiry)
+        self._user_cache: Dict[str, tuple[UserContext, float]] = {}  # token -> (user, expiry)
         self.cache_ttl_seconds = 300  # Cache user contexts for 5 minutes
 
     async def get_current_user(
@@ -158,9 +152,7 @@ class RBACDependencies:
 
         try:
             # Decode JWT token
-            payload = jwt.decode(
-                token_str, self.secret_key, algorithms=[self.algorithm]
-            )
+            payload = jwt.decode(token_str, self.secret_key, algorithms=[self.algorithm])
 
             # Validate payload
             token_data = TokenPayload(**payload)
@@ -261,7 +253,8 @@ class RBACDependencies:
         Args:
             permissions: List of required permissions
             require_all: If True, user must have all permissions. If False, any one is sufficient
-            resource_scope_param: Name of path/query parameter containing resource ID for scope checking
+            resource_scope_param: Name of path/query parameter containing resource ID
+                for scope checking
             message: Custom error message
         """
 
@@ -291,9 +284,7 @@ class RBACDependencies:
                         missing.append(permission)
 
                 if missing:
-                    error_msg = (
-                        message or f"Missing required permissions: {', '.join(missing)}"
-                    )
+                    error_msg = message or f"Missing required permissions: {', '.join(missing)}"
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=error_msg,
@@ -305,9 +296,7 @@ class RBACDependencies:
                         return current_user
 
                 # No permissions matched
-                error_msg = (
-                    message or f"None of the required permissions found: {permissions}"
-                )
+                error_msg = message or f"None of the required permissions found: {permissions}"
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=error_msg,
@@ -442,9 +431,9 @@ class RBACDependencies:
                 return current_user
 
             # Get target user ID from request
-            target_user_id = request.path_params.get(
+            target_user_id = request.path_params.get(user_id_param) or request.query_params.get(
                 user_id_param
-            ) or request.query_params.get(user_id_param)
+            )
 
             if target_user_id:
                 try:
@@ -520,9 +509,7 @@ def require_permissions(
     return decorator
 
 
-def require_roles(
-    roles: List[str], require_all: bool = False, message: Optional[str] = None
-):
+def require_roles(roles: List[str], require_all: bool = False, message: Optional[str] = None):
     """
     Decorator to require roles on a route
 

@@ -1,15 +1,14 @@
 # tests/test_integration.py
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, Mock
-from uuid import uuid4
 
 from rbac.integration import (
-    LDAPProvider,
-    LDAPConfig,
-    KeycloakProvider,
-    KeycloakConfig,
     IdentitySyncService,
-    ExternalUser,
+    KeycloakConfig,
+    KeycloakProvider,
+    LDAPConfig,
+    LDAPProvider,
 )
 
 pytestmark = pytest.mark.asyncio

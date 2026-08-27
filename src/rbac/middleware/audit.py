@@ -1,15 +1,15 @@
 # rbac/middleware/audit.py
-from fastapi import Request, Response, Depends
-from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Callable, Optional, Dict
-from uuid import UUID, uuid4
 import time
+from typing import Callable, Dict, Optional
+from uuid import UUID, uuid4
+
+from fastapi import Depends, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from rbac.services.audit_service import (
-    AuditService,
     AuditAction,
     AuditResourceType,
-    AuditSeverity,
+    AuditService,
 )
 from rbac.utils.logger import setup_logger
 
@@ -89,12 +89,6 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     description=f"{request.method} {request.url.path}",
                 )
             else:
-                # Log error
-                severity = (
-                    AuditSeverity.ERROR
-                    if response.status_code >= 500
-                    else AuditSeverity.WARNING
-                )
                 await self.audit_service.log_action(
                     user_id=user_id,
                     tenant_id=tenant_id,

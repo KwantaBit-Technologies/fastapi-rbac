@@ -1,22 +1,29 @@
 # tests/conftest.py
-import pytest
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 from urllib.parse import urlparse
-from uuid import uuid4, UUID
-from datetime import datetime, timedelta
+from uuid import UUID, uuid4
+
 import asyncpg
-from unittest.mock import Mock, AsyncMock
+import pytest
 from sqlalchemy import delete, insert
 
-from rbac.core.database import Database, audit_logs, permissions, role_permissions, roles, tenants, user_roles
-from rbac.core.models import Tenant, Role, Permission, UserRole
-from rbac.core.constants import ResourceType, PermissionAction, DEFAULT_ROLES
-from rbac.services.permission_service import PermissionService
-from rbac.services.role_service import RoleService
+from rbac.core.constants import PermissionAction, ResourceType
+from rbac.core.database import (
+    Database,
+    audit_logs,
+    permissions,
+    role_permissions,
+    roles,
+    tenants,
+    user_roles,
+)
+from rbac.core.models import Tenant
 from rbac.services.assignment_service import AssignmentService
 from rbac.services.audit_service import AuditService
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
 
 # Test database URL - use a separate test database.
 TEST_DATABASE_URL = os.getenv(
@@ -76,9 +83,7 @@ async def permission_service(db: Database) -> PermissionService:
 
 
 @pytest.fixture
-async def role_service(
-    db: Database, permission_service: PermissionService
-) -> RoleService:
+async def role_service(db: Database, permission_service: PermissionService) -> RoleService:
     """Create role service instance"""
     return RoleService(db, permission_service)
 
@@ -100,9 +105,7 @@ async def audit_service(db: Database) -> AuditService:
 @pytest.fixture
 async def test_tenant(db: Database) -> Tenant:
     """Create test tenant"""
-    tenant = Tenant(
-        id=uuid4(), name="Test Tenant", domain="test.example.com", is_active=True
-    )
+    tenant = Tenant(id=uuid4(), name="Test Tenant", domain="test.example.com", is_active=True)
     await db.execute(
         insert(tenants).values(
             id=tenant.id,
@@ -130,9 +133,7 @@ async def test_admin_user_id() -> UUID:
 
 
 @pytest.fixture
-async def sample_permissions(
-    permission_service: PermissionService, test_tenant: Tenant
-) -> dict:
+async def sample_permissions(permission_service: PermissionService, test_tenant: Tenant) -> dict:
     """Create sample permissions for testing"""
     permissions = {}
 

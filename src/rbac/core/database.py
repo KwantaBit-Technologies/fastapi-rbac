@@ -1,35 +1,43 @@
 # rbac/core/database.py
-from typing import Optional, AsyncGenerator, Dict, Any, List
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
+from sqlalchemy import (
+    TIMESTAMP,
+    Boolean,
+    Column,
+    ForeignKey,
+    Index,
+    MetaData,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import (
-    create_async_engine,
-    AsyncEngine,
     AsyncConnection,
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
+    create_async_engine,
 )
-from sqlalchemy import (
-    MetaData,
-    Table,
-    Column,
-    String,
-    Boolean,
-    JSON,
-    Text,
-    TIMESTAMP,
-    Index,
-    UniqueConstraint,
-    ForeignKey,
-)
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB, INET
-import uuid
-from datetime import datetime, timezone
+
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("DATABASE: ")
 
 # Define metadata and tables
 metadata = MetaData()
+
+
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC timestamp for SQLAlchemy defaults."""
+    return datetime.now(timezone.utc)
+
 
 # Tenants table
 tenants = Table(
@@ -39,13 +47,13 @@ tenants = Table(
     Column("name", String(255), nullable=False),
     Column("domain", String(255)),
     Column("is_active", Boolean, default=True),
-    Column("settings", JSONB, default={}),
-    Column("created_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("settings", JSONB, default=dict),
+    Column("created_at", TIMESTAMP(timezone=True), default=utc_now),
     Column(
         "updated_at",
         TIMESTAMP(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     ),
 )
 
@@ -60,15 +68,13 @@ permissions = Table(
     Column("scope", String(255)),
     Column("description", Text),
     Column("is_system", Boolean, default=False),
-    Column(
-        "tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
-    ),
-    Column("created_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")),
+    Column("created_at", TIMESTAMP(timezone=True), default=utc_now),
     Column(
         "updated_at",
         TIMESTAMP(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     ),
     UniqueConstraint(
         "resource",
@@ -89,16 +95,14 @@ roles = Table(
     Column("parent_ids", JSONB, default=list),  # Store as JSON array
     Column("is_system_role", Boolean, default=False),
     Column("is_active", Boolean, default=True),
-    Column(
-        "tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
-    ),
-    Column("metadata", JSONB, default={}),
-    Column("created_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")),
+    Column("metadata", JSONB, default=dict),
+    Column("created_at", TIMESTAMP(timezone=True), default=utc_now),
     Column(
         "updated_at",
         TIMESTAMP(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     ),
     UniqueConstraint("name", "tenant_id", name="uq_role_name_tenant"),
 )
@@ -119,7 +123,7 @@ role_permissions = Table(
         ForeignKey("permissions.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    Column("granted_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("granted_at", TIMESTAMP(timezone=True), default=utc_now),
 )
 
 # User-Roles table
@@ -128,20 +132,16 @@ user_roles = Table(
     metadata,
     Column("id", PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
     Column("user_id", PG_UUID(as_uuid=True), nullable=False),
-    Column(
-        "role_id", PG_UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE")
-    ),
-    Column(
-        "tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
-    ),
-    Column("resource_scope", JSONB, default={}),
+    Column("role_id", PG_UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE")),
+    Column("tenant_id", PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")),
+    Column("resource_scope", JSONB, default=dict),
     Column("granted_by", PG_UUID(as_uuid=True)),
-    Column("granted_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("granted_at", TIMESTAMP(timezone=True), default=utc_now),
     Column(
         "updated_at",
         TIMESTAMP(timezone=True),
-        default=datetime.now(timezone.utc),
-        onupdate=datetime.now(timezone.utc),
+        default=utc_now,
+        onupdate=utc_now,
     ),
     Column("expires_at", TIMESTAMP(timezone=True)),
     Column("is_active", Boolean, default=True),
@@ -164,10 +164,10 @@ audit_logs = Table(
     Column("resource_id", PG_UUID(as_uuid=True)),
     Column("old_value", JSONB),
     Column("new_value", JSONB),
-    Column("metadata", JSONB, default={}),
+    Column("metadata", JSONB, default=dict),
     Column("ip_address", String(45)),  # IPv6 can be up to 45 chars
     Column("user_agent", Text),
-    Column("created_at", TIMESTAMP(timezone=True), default=datetime.utcnow),
+    Column("created_at", TIMESTAMP(timezone=True), default=utc_now),
 )
 
 # Indexes
@@ -223,7 +223,8 @@ class Database:
                 await conn.run_sync(metadata.create_all)
 
             logger.info(
-                f"Database connection pool created successfully with SQLAlchemy (min={self.min_size}, max={self.max_size})"
+                "Database connection pool created successfully with SQLAlchemy "
+                f"(min={self.min_size}, max={self.max_size})"
             )
 
         except Exception as e:

@@ -1,26 +1,26 @@
 # rbac/services/audit_service.py
-from typing import Optional, List, Dict, Any, Union
-from uuid import UUID, uuid4
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID, uuid4
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
 
-from fastapi import Request
-from sqlalchemy import (
-    select,
-    insert,
-    delete,
-    and_,
-    or_,
-    func,
-    text,
-    desc,
-    asc,
-    literal_column,
-)
 from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict
+
+from fastapi import Request
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import (
+    and_,
+    asc,
+    delete,
+    desc,
+    func,
+    insert,
+    literal_column,
+    or_,
+    select,
+)
 
 from rbac.core.database import Database, audit_logs
 from rbac.core.models import AuditLog
@@ -125,9 +125,7 @@ class AuditService:
                 "username": event.username,
                 "tenant_name": event.tenant_name,
                 "resource_name": event.resource_name,
-                "severity": (
-                    event.severity.value if event.severity else AuditSeverity.INFO.value
-                ),
+                "severity": (event.severity.value if event.severity else AuditSeverity.INFO.value),
                 "changes": event.changes,
                 "request_id": event.request_id,
                 "session_id": event.session_id,
@@ -144,9 +142,7 @@ class AuditService:
                     user_id=event.user_id,
                     tenant_id=event.tenant_id,
                     action=event.action.value if event.action else None,
-                    resource_type=(
-                        event.resource_type.value if event.resource_type else None
-                    ),
+                    resource_type=(event.resource_type.value if event.resource_type else None),
                     resource_id=event.resource_id,
                     old_value=event.old_value,
                     new_value=event.new_value,
@@ -187,9 +183,7 @@ class AuditService:
                         "tenant_name": event.tenant_name,
                         "resource_name": event.resource_name,
                         "severity": (
-                            event.severity.value
-                            if event.severity
-                            else AuditSeverity.INFO.value
+                            event.severity.value if event.severity else AuditSeverity.INFO.value
                         ),
                         "changes": event.changes,
                         "request_id": event.request_id,
@@ -207,9 +201,7 @@ class AuditService:
                             tenant_id=event.tenant_id,
                             action=event.action.value if event.action else None,
                             resource_type=(
-                                event.resource_type.value
-                                if event.resource_type
-                                else None
+                                event.resource_type.value if event.resource_type else None
                             ),
                             resource_id=event.resource_id,
                             old_value=event.old_value,
@@ -339,9 +331,7 @@ class AuditService:
         }
 
         audit_action = action_map.get(action, AuditAction.ACCESS)
-        severity = (
-            AuditSeverity.INFO if action != "failed_login" else AuditSeverity.WARNING
-        )
+        severity = AuditSeverity.INFO if action != "failed_login" else AuditSeverity.WARNING
         status = "SUCCESS" if action != "failed_login" else "FAILED"
 
         event = AuditEvent(
@@ -442,9 +432,7 @@ class AuditService:
 
         if severity:
             # Search in JSON metadata
-            conditions.append(
-                audit_logs.c.metadata["severity"].astext == severity.value
-            )
+            conditions.append(audit_logs.c.metadata["severity"].astext == severity.value)
 
         if status:
             conditions.append(audit_logs.c.metadata["status"].astext == status)
@@ -453,12 +441,8 @@ class AuditService:
             # Search in JSON metadata fields
             conditions.append(
                 or_(
-                    audit_logs.c.metadata["description"].astext.ilike(
-                        f"%{search_text}%"
-                    ),
-                    audit_logs.c.metadata["resource_name"].astext.ilike(
-                        f"%{search_text}%"
-                    ),
+                    audit_logs.c.metadata["description"].astext.ilike(f"%{search_text}%"),
+                    audit_logs.c.metadata["resource_name"].astext.ilike(f"%{search_text}%"),
                 )
             )
 
@@ -525,9 +509,7 @@ class AuditService:
         results = await self.db.fetch_all(stmt)
         return [AuditLog.model_validate(r) for r in results]
 
-    async def get_tenant_audit_summary(
-        self, tenant_id: UUID, days: int = 30
-    ) -> Dict[str, Any]:
+    async def get_tenant_audit_summary(self, tenant_id: UUID, days: int = 30) -> Dict[str, Any]:
         """Get audit summary for a tenant"""
 
         start_date = datetime.now(timezone.utc) - timedelta(days=days)
@@ -745,9 +727,7 @@ class AuditService:
         top_actions = await self.db.fetch_all(top_actions_stmt)
 
         # Total events
-        total_stmt = (
-            select(func.count()).select_from(audit_logs).where(and_(*conditions))
-        )
+        total_stmt = select(func.count()).select_from(audit_logs).where(and_(*conditions))
         total = await self.db.fetch_val(total_stmt) or 0
 
         return {
@@ -755,17 +735,13 @@ class AuditService:
             "daily_counts": [
                 {
                     "date": (
-                        d["date"].isoformat()
-                        if hasattr(d["date"], "isoformat")
-                        else str(d["date"])
+                        d["date"].isoformat() if hasattr(d["date"], "isoformat") else str(d["date"])
                     ),
                     "count": d["count"],
                 }
                 for d in daily
             ],
-            "hourly_distribution": [
-                {"hour": int(h["hour"]), "count": h["count"]} for h in hourly
-            ],
+            "hourly_distribution": [{"hour": int(h["hour"]), "count": h["count"]} for h in hourly],
             "top_actions": [dict(a) for a in top_actions],
             "total_events": total,
         }
@@ -783,9 +759,7 @@ class AuditService:
                 # Re-add to buffer
                 self._audit_buffer.extend(events)
 
-    def _calculate_changes(
-        self, old_value: Dict, new_value: Dict
-    ) -> List[Dict[str, Any]]:
+    def _calculate_changes(self, old_value: Dict, new_value: Dict) -> List[Dict[str, Any]]:
         """Calculate differences between old and new values"""
         changes = []
         all_keys = set(old_value.keys()) | set(new_value.keys())
@@ -817,9 +791,7 @@ class AuditService:
 
         return changes
 
-    async def get_user_session_trail(
-        self, session_id: str, limit: int = 100
-    ) -> List[AuditLog]:
+    async def get_user_session_trail(self, session_id: str, limit: int = 100) -> List[AuditLog]:
         """Get all events for a specific session"""
 
         stmt = (
@@ -880,9 +852,7 @@ class AuditService:
                             mean - threshold * std_dev,
                             mean + threshold * std_dev,
                         ],
-                        "deviation": (
-                            (h["count"] - mean) / std_dev if std_dev > 0 else 0
-                        ),
+                        "deviation": ((h["count"] - mean) / std_dev if std_dev > 0 else 0),
                     }
                 )
 
@@ -917,7 +887,7 @@ class AuditContext:
             action=AuditAction.LOGIN,
             resource_type=AuditResourceType.SESSION,
             metadata={"session_id": self.session_id, **self.metadata},
-            description=f"Session started",
+            description="Session started",
         )
         return self
 

@@ -1,14 +1,13 @@
 # rbac/cache/redis_client.py
-from typing import Optional, Any, Dict, List, Union
-import json
 import pickle
-from datetime import timedelta
-import logging
+from typing import Any, Dict, List, Optional
+
 from redis import asyncio as aioredis
-from redis.asyncio import Redis, ConnectionPool
+from redis.asyncio import ConnectionPool, Redis
 from redis.asyncio.retry import Retry
 from redis.backoff import ExponentialBackoff
-from redis.exceptions import RedisError, ConnectionError, TimeoutError
+from redis.exceptions import ConnectionError, RedisError, TimeoutError
+
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("redis_cache")
@@ -203,7 +202,7 @@ class RedisCache:
             values = await self._redis.mget(prefixed_keys)
 
             result = {}
-            for key, value in zip(keys, values):
+            for key, value in zip(keys, values, strict=False):
                 if value:
                     result[key] = self._deserialize(value)
             return result
@@ -211,9 +210,7 @@ class RedisCache:
             logger.warning(f"Redis mget error: {e}")
             return {}
 
-    async def set_many(
-        self, mapping: Dict[str, Any], ttl: Optional[int] = None
-    ) -> bool:
+    async def set_many(self, mapping: Dict[str, Any], ttl: Optional[int] = None) -> bool:
         """Set multiple keys at once"""
         if not self._redis or not mapping:
             return False
@@ -287,14 +284,10 @@ class RedisCachedPermissionService:
         self.role_permissions_ttl = role_permissions_ttl
         self.cache_enabled = cache_enabled
 
-    async def get_user_permissions(
-        self, user_id: str, tenant_id: Optional[str] = None
-    ) -> set:
+    async def get_user_permissions(self, user_id: str, tenant_id: Optional[str] = None) -> set:
         """Get user permissions with Redis caching"""
         if not self.cache_enabled:
-            return await self.permission_service.get_user_permissions(
-                user_id, tenant_id
-            )
+            return await self.permission_service.get_user_permissions(user_id, tenant_id)
 
         cache_key = f"user_perms:{user_id}:{tenant_id or 'global'}"
 
@@ -304,9 +297,7 @@ class RedisCachedPermissionService:
             return set(cached)
 
         # Get from service
-        permissions = await self.permission_service.get_user_permissions(
-            user_id, tenant_id
-        )
+        permissions = await self.permission_service.get_user_permissions(user_id, tenant_id)
 
         # Cache the result
         await self.cache.set(
@@ -354,14 +345,10 @@ class RedisCachedPermissionService:
 
         return False
 
-    async def get_role_permissions(
-        self, role_id: str, include_inherited: bool = True
-    ) -> list:
+    async def get_role_permissions(self, role_id: str, include_inherited: bool = True) -> list:
         """Get role permissions with caching"""
         if not self.cache_enabled:
-            return await self.permission_service.get_role_permissions(
-                role_id, include_inherited
-            )
+            return await self.permission_service.get_role_permissions(role_id, include_inherited)
 
         cache_key = f"role_perms:{role_id}:inherited={include_inherited}"
 
@@ -371,18 +358,14 @@ class RedisCachedPermissionService:
             return cached
 
         # Get from service
-        permissions = await self.permission_service.get_role_permissions(
-            role_id, include_inherited
-        )
+        permissions = await self.permission_service.get_role_permissions(role_id, include_inherited)
 
         # Cache the result
         await self.cache.set(cache_key, permissions, ttl=self.role_permissions_ttl)
 
         return permissions
 
-    async def invalidate_user_cache(
-        self, user_id: str, tenant_id: Optional[str] = None
-    ):
+    async def invalidate_user_cache(self, user_id: str, tenant_id: Optional[str] = None):
         """Invalidate cache for a specific user"""
         if not self.cache_enabled:
             return
@@ -430,19 +413,15 @@ class RedisCachedPermissionService:
             role_id, permission_id, *args, **kwargs
         )
         await self.invalidate_role_cache(role_id)
-        await self.cache.delete_pattern(
-            f"user_perms:*"
-        )  # All users with this role affected
+        await self.cache.delete_pattern("user_perms:*")  # All users with this role affected
         return result
 
-    async def revoke_permission_from_role(
-        self, role_id, permission_id, *args, **kwargs
-    ):
+    async def revoke_permission_from_role(self, role_id, permission_id, *args, **kwargs):
         result = await self.permission_service.revoke_permission_from_role(
             role_id, permission_id, *args, **kwargs
         )
         await self.invalidate_role_cache(role_id)
-        await self.cache.delete_pattern(f"user_perms:*")
+        await self.cache.delete_pattern("user_perms:*")
         return result
 
 
@@ -519,7 +498,7 @@ class RedisCachedRoleService:
             return
 
         await self.cache.delete_pattern(f"role:{role_id}:*")
-        await self.cache.delete_pattern(f"role_name:*")  # Names might have changed
+        await self.cache.delete_pattern("role_name:*")  # Names might have changed
         await self.cache.delete_pattern(f"role_hierarchy:{role_id}")
         logger.debug(f"Invalidated cache for role {role_id}")
 
@@ -539,9 +518,7 @@ class RedisCachedRoleService:
         return result
 
     async def add_role_parent(self, role_id, parent_id, *args, **kwargs):
-        result = await self.role_service.add_role_parent(
-            role_id, parent_id, *args, **kwargs
-        )
+        result = await self.role_service.add_role_parent(role_id, parent_id, *args, **kwargs)
         await self.invalidate_role(role_id)
         await self.invalidate_role(parent_id)
         return result
@@ -618,9 +595,7 @@ class RedisCachedAssignmentService:
 
         return assignments
 
-    async def invalidate_user_assignments(
-        self, user_id: str, tenant_id: Optional[str] = None
-    ):
+    async def invalidate_user_assignments(self, user_id: str, tenant_id: Optional[str] = None):
         """Invalidate cache for a user's assignments"""
         if not self.cache_enabled:
             return
@@ -656,17 +631,13 @@ class RedisCachedAssignmentService:
         assignment = await self.assignment_service.get_user_assignments(assignment_id)
         if assignment:
             await self.invalidate_user_assignments(assignment.user_id)
-        return await self.assignment_service.update_assignment_scope(
-            assignment_id, *args, **kwargs
-        )
+        return await self.assignment_service.update_assignment_scope(assignment_id, *args, **kwargs)
 
     async def extend_assignment(self, assignment_id, *args, **kwargs):
         assignment = await self.assignment_service.get_user_assignments(assignment_id)
         if assignment:
             await self.invalidate_user_assignments(assignment.user_id)
-        return await self.assignment_service.extend_assignment(
-            assignment_id, *args, **kwargs
-        )
+        return await self.assignment_service.extend_assignment(assignment_id, *args, **kwargs)
 
 
 class CacheManager:

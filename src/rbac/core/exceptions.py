@@ -1,5 +1,5 @@
 # rbac/core/exceptions.py
-from typing import Optional, Any
+from typing import Any, Optional
 
 
 class RBACError(Exception):
@@ -19,9 +19,7 @@ class PermissionDeniedError(RBACError):
             "required_permission": required_permission,
             "user_id": str(user_id) if user_id else None,
         }
-        super().__init__(
-            f"User lacks required permission: {required_permission}", details
-        )
+        super().__init__(f"User lacks required permission: {required_permission}", details)
 
 
 class RoleNotFoundError(RBACError):
@@ -45,9 +43,7 @@ class TenantNotFoundError(RBACError):
     """Raised when tenant doesn't exist"""
 
     def __init__(self, tenant_id: Any):
-        super().__init__(
-            f"Tenant not found: {tenant_id}", {"tenant_id": str(tenant_id)}
-        )
+        super().__init__(f"Tenant not found: {tenant_id}", {"tenant_id": str(tenant_id)})
 
 
 class CircularRoleHierarchyError(RBACError):

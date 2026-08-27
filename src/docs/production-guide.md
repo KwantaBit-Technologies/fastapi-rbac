@@ -9,19 +9,19 @@ route protection, audit logging, caching, Docker deployment, and operational che
 Install the core package in your application environment:
 
 ```bash
-pip install git+https://github.com/kwantabit-Technologies/fastapi-rbac.git
+pip install kb-fastapi-rbac
 ```
 
 For Redis-backed caching, install the Redis extra:
 
 ```bash
-pip install "fastapi-rbac[redis]"
+pip install "kb-fastapi-rbac[redis]"
 ```
 
 For identity providers:
 
 ```bash
-pip install "fastapi-rbac[ldap,keycloak]"
+pip install "kb-fastapi-rbac[ldap,keycloak]"
 ```
 
 ## 2. Configure Environment Variables

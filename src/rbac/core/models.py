@@ -1,13 +1,12 @@
 # rbac/core/models.py
 import os
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
-from enum import Enum
 
 os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import PermissionAction, ResourceType
 

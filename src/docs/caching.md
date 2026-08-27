@@ -20,11 +20,11 @@ RBAC systems frequently check permissions, which can become a database bottlenec
 
 # Install with Redis support
 
-pip install "fastapi-rbac[redis]"
+pip install "kb-fastapi-rbac[redis]"
 
 # Or with uv
 
-uv pip install "fastapi-rbac[redis]"
+uv pip install "kb-fastapi-rbac[redis]"
 
 ## Basic Setup
 

@@ -4,44 +4,44 @@ FastAPI Enterprise RBAC Engine
 A production-grade Role-Based Access Control (RBAC) system for FastAPI applications.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 __author__ = "Munya Junior (khalid) at Kwantabit Technologies"
 __license__ = "MIT"
 
-from rbac.core import (
-    Database,
-    Permission,
-    Role,
-    UserRole,
-    Tenant,
-    AuditLog,
-    ResourceType,
-    PermissionAction,
-    RBACError,
-    PermissionDeniedError,
-    RoleNotFoundError,
-)
-from rbac.services import (
-    PermissionService,
-    RoleService,
-    AssignmentService,
-    AuditService,
-)
 from rbac.cache import (
+    CacheManager,
     RedisCache,
+    RedisCachedAssignmentService,
     RedisCachedPermissionService,
     RedisCachedRoleService,
-    RedisCachedAssignmentService,
-    CacheManager,
+)
+from rbac.core import (
+    AuditLog,
+    Database,
+    Permission,
+    PermissionAction,
+    PermissionDeniedError,
+    RBACError,
+    ResourceType,
+    Role,
+    RoleNotFoundError,
+    Tenant,
+    UserRole,
 )
 from rbac.dependencies import (
     RBACDependencies,
     UserContext,
+    public_route,
     require_permissions,
     require_roles,
-    public_route,
 )
-from rbac.integration import IdentitySyncService, ExternalUser
+from rbac.integration import ExternalUser, IdentitySyncService
+from rbac.services import (
+    AssignmentService,
+    AuditService,
+    PermissionService,
+    RoleService,
+)
 
 
 def __getattr__(name):
@@ -50,6 +50,7 @@ def __getattr__(name):
 
         return getattr(integration, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Core

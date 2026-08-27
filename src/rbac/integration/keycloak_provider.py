@@ -1,13 +1,14 @@
 # rbac/integration/keycloak_provider.py
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
 import httpx
 import jwt
 from jwt.algorithms import RSAAlgorithm
+
 from rbac.utils.logger import setup_logger
 
-
-from .base import IdentityProvider, ExternalUser, ExternalGroup
+from .base import ExternalGroup, ExternalUser, IdentityProvider
 
 logger = setup_logger("keycloak_provider")
 
@@ -44,9 +45,7 @@ class KeycloakProvider(IdentityProvider):
         self._access_token = None
         self._token_expiry = None
         self._public_keys = None
-        self._http_client = httpx.AsyncClient(
-            verify=config.verify_ssl, timeout=config.timeout
-        )
+        self._http_client = httpx.AsyncClient(verify=config.verify_ssl, timeout=config.timeout)
 
     async def authenticate(self, credentials: Dict[str, Any]) -> Optional[ExternalUser]:
         """Authenticate user with Keycloak"""
@@ -57,7 +56,9 @@ class KeycloakProvider(IdentityProvider):
             return None
 
         try:
-            token_url = f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/token"
+            token_url = (
+                f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/token"
+            )
 
             data = {
                 "client_id": self.config.client_id,
@@ -133,7 +134,9 @@ class KeycloakProvider(IdentityProvider):
         try:
             token = await self._get_admin_token()
 
-            url = f"{self.config.server_url}/admin/realms/{self.config.realm}/users/{user_id}/groups"
+            url = (
+                f"{self.config.server_url}/admin/realms/{self.config.realm}/users/{user_id}/groups"
+            )
 
             response = await self._http_client.get(
                 url, headers={"Authorization": f"Bearer {token}"}
@@ -173,7 +176,7 @@ class KeycloakProvider(IdentityProvider):
                 users_data = response.json()
 
                 for user_data in users_data:
-                    user = await self._keycloak_to_external_user(user_data)
+                    await self._keycloak_to_external_user(user_data)
 
                     # Here you would integrate with your user service
                     # to create or update users in your local database
@@ -197,7 +200,9 @@ class KeycloakProvider(IdentityProvider):
         ):
             return self._access_token
 
-        token_url = f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/token"
+        token_url = (
+            f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/token"
+        )
 
         data = {
             "client_id": self.config.client_id,
@@ -229,7 +234,9 @@ class KeycloakProvider(IdentityProvider):
         if self._public_keys:
             return self._public_keys
 
-        certs_url = f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/certs"
+        certs_url = (
+            f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/certs"
+        )
 
         response = await self._http_client.get(certs_url)
 
@@ -287,7 +294,10 @@ class KeycloakProvider(IdentityProvider):
         token = await self._get_admin_token()
 
         # Get realm roles
-        roles_url = f"{self.config.server_url}/admin/realms/{self.config.realm}/users/{user_data.get('id')}/role-mappings/realm"
+        roles_url = (
+            f"{self.config.server_url}/admin/realms/{self.config.realm}/users/"
+            f"{user_data.get('id')}/role-mappings/realm"
+        )
         roles_response = await self._http_client.get(
             roles_url, headers={"Authorization": f"Bearer {token}"}
         )

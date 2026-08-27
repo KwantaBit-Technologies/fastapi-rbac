@@ -1,14 +1,14 @@
 # tests/test_redis_cache.py
-import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
+
 from rbac.cache.redis_client import (
+    CacheManager,
     RedisCache,
     RedisCachedPermissionService,
     RedisCachedRoleService,
-    RedisCachedAssignmentService,
-    CacheManager,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -18,9 +18,7 @@ class TestRedisCache:
 
     async def test_redis_cache_initialization(self):
         """Test Redis cache initialization"""
-        cache = RedisCache(
-            redis_url="redis://localhost:6379", prefix="test:", default_ttl=300
-        )
+        cache = RedisCache(redis_url="redis://localhost:6379", prefix="test:", default_ttl=300)
 
         assert cache.prefix == "test:"
         assert cache.default_ttl == 300
@@ -80,9 +78,7 @@ class TestRedisCachedPermissionService:
         mock_base = AsyncMock()
         mock_cache = AsyncMock()
 
-        service = RedisCachedPermissionService(
-            mock_base, mock_cache, cache_enabled=True
-        )
+        service = RedisCachedPermissionService(mock_base, mock_cache, cache_enabled=True)
 
         # Mock cache miss then hit
         mock_cache.get.return_value = None
@@ -104,14 +100,10 @@ class TestRedisCachedPermissionService:
         mock_base = AsyncMock()
         mock_cache = AsyncMock()
 
-        service = RedisCachedPermissionService(
-            mock_base, mock_cache, cache_enabled=True
-        )
+        service = RedisCachedPermissionService(mock_base, mock_cache, cache_enabled=True)
 
         await service.invalidate_user_cache(test_user_id)
-        mock_cache.delete_pattern.assert_called_once_with(
-            f"user_perms:{test_user_id}:*"
-        )
+        mock_cache.delete_pattern.assert_called_once_with(f"user_perms:{test_user_id}:*")
 
 
 class TestRedisCachedRoleService:
@@ -153,12 +145,8 @@ class TestCacheManager:
 
         await manager.invalidate_user(test_user_id)
 
-        mock_permission.invalidate_user_cache.assert_called_once_with(
-            test_user_id, None
-        )
-        mock_assignment.invalidate_user_assignments.assert_called_once_with(
-            test_user_id, None
-        )
+        mock_permission.invalidate_user_cache.assert_called_once_with(test_user_id, None)
+        mock_assignment.invalidate_user_assignments.assert_called_once_with(test_user_id, None)
 
     async def test_warm_user_cache(self, test_user_id):
         """Test pre-warming cache for a user"""

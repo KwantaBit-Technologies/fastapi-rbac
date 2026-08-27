@@ -1,20 +1,20 @@
 # examples/integration_example.py
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
-from uuid import uuid4
+
 import uvicorn
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from rbac.core.database import Database
-from rbac.services.role_service import RoleService
-from rbac.services.assignment_service import AssignmentService
-from rbac.services.permission_service import PermissionService
 from rbac.integration import (
-    LDAPProvider,
-    LDAPConfig,
-    KeycloakProvider,
-    KeycloakConfig,
     IdentitySyncService,
+    KeycloakConfig,
+    KeycloakProvider,
+    LDAPConfig,
+    LDAPProvider,
     SyncStrategy,
 )
+from rbac.services.assignment_service import AssignmentService
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
 
 app = FastAPI()
 
@@ -81,9 +81,7 @@ async def shutdown():
 @app.post("/auth/ldap/login")
 async def ldap_login(username: str, password: str):
     """Authenticate with LDAP"""
-    user = await ldap_provider.authenticate(
-        {"username": username, "password": password}
-    )
+    user = await ldap_provider.authenticate({"username": username, "password": password})
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -106,9 +104,7 @@ async def ldap_login(username: str, password: str):
 @app.post("/auth/keycloak/login")
 async def keycloak_login(username: str, password: str):
     """Authenticate with Keycloak"""
-    user = await keycloak_provider.authenticate(
-        {"username": username, "password": password}
-    )
+    user = await keycloak_provider.authenticate({"username": username, "password": password})
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")

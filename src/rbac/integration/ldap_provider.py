@@ -1,13 +1,12 @@
 # rbac/integration/ldap_provider.py
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
-import ldap3
-from ldap3 import Server, Connection, ALL, SUBTREE
-import hashlib
-import base64
+from typing import Any, Dict, List, Optional, Tuple
 
-from .base import IdentityProvider, ExternalUser, ExternalGroup
+from ldap3 import ALL, SUBTREE, Connection, Server
+
 from rbac.utils.logger import setup_logger
+
+from .base import ExternalGroup, ExternalUser, IdentityProvider
 
 logger = setup_logger("ldap_provider")
 
@@ -84,9 +83,7 @@ class LDAPProvider(IdentityProvider):
                 return None
 
             # Try to bind with user's credentials
-            user_conn = Connection(
-                self._server, user=user_dn, password=password, auto_bind=True
-            )
+            user_conn = Connection(self._server, user=user_dn, password=password, auto_bind=True)
 
             # If successful, get user details
             user = await self._get_user_from_dn(user_dn)
@@ -156,7 +153,9 @@ class LDAPProvider(IdentityProvider):
         if last_sync:
             # LDAP doesn't have standard modification timestamps
             # might need to use 'modifyTimestamp' or similar
-            sync_filter = f"(&{sync_filter}(modifyTimestamp>={last_sync.strftime('%Y%m%d%H%M%SZ')}))"
+            sync_filter = (
+                f"(&{sync_filter}(modifyTimestamp>={last_sync.strftime('%Y%m%d%H%M%SZ')}))"
+            )
 
         conn.search(
             search_base=self.config.user_search_base,
@@ -166,7 +165,7 @@ class LDAPProvider(IdentityProvider):
         )
 
         for entry in conn.entries:
-            user = self._ldap_to_external_user(entry)
+            self._ldap_to_external_user(entry)
 
             # Here you would integrate with your user service
             # to create or update users in your local database
@@ -246,9 +245,7 @@ class LDAPProvider(IdentityProvider):
             external_id=str(attrs.get("uid", [""])[0]),
             username=str(attrs.get("uid", [""])[0]),
             email=str(attrs.get("mail", [""])[0]) if attrs.get("mail") else None,
-            first_name=(
-                str(attrs.get("givenName", [""])[0]) if attrs.get("givenName") else None
-            ),
+            first_name=(str(attrs.get("givenName", [""])[0]) if attrs.get("givenName") else None),
             last_name=str(attrs.get("sn", [""])[0]) if attrs.get("sn") else None,
             full_name=str(attrs.get("cn", [""])[0]) if attrs.get("cn") else None,
             groups=[str(g) for g in attrs.get("memberOf", [])],
@@ -267,9 +264,7 @@ class LDAPProvider(IdentityProvider):
             external_id=entry.entry_dn,
             name=str(attrs.get("cn", [""])[0]),
             description=(
-                str(attrs.get("description", [""])[0])
-                if attrs.get("description")
-                else None
+                str(attrs.get("description", [""])[0]) if attrs.get("description") else None
             ),
             members=[str(m) for m in attrs.get("member", [])],
             attributes=dict(attrs),

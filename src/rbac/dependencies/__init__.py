@@ -2,11 +2,10 @@
 from .auth import (
     RBACDependencies,
     UserContext,
+    public_route,
     require_permissions,
     require_roles,
-    public_route,
 )
-
 
 __all__ = [
     "RBACDependencies",

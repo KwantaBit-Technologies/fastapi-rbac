@@ -1,19 +1,20 @@
 # examples/audit_example.py
-from fastapi import FastAPI, Depends, Request
-from uuid import uuid4
-import uvicorn
-from typing import Callable, Optional
 from datetime import datetime
+from typing import Callable, Optional
+from uuid import uuid4
+
+import uvicorn
+from fastapi import Depends, FastAPI, Request
 
 from rbac.core.database import Database
-from rbac.services.audit_service import (
-    AuditEvent,
-    AuditService,
-    AuditAction,
-    AuditResourceType,
-    AuditContext,
-)
 from rbac.middleware.audit import AuditMiddleware, audit_logger, get_audit_service
+from rbac.services.audit_service import (
+    AuditAction,
+    AuditContext,
+    AuditEvent,
+    AuditResourceType,
+    AuditService,
+)
 
 app = FastAPI()
 
@@ -174,9 +175,7 @@ async def get_audit_summary(
     """Get audit summary"""
 
     if tenant_id:
-        summary = await audit_service.get_tenant_audit_summary(
-            tenant_id=tenant_id, days=days
-        )
+        summary = await audit_service.get_tenant_audit_summary(tenant_id=tenant_id, days=days)
     else:
         summary = await audit_service.get_statistics(days=days)
 

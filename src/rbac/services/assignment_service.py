@@ -1,20 +1,22 @@
 # rbac/services/assignment_service.py
-from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
-from uuid import UUID
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, insert, update, delete, and_, or_, func, desc
 from enum import Enum
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from uuid import UUID
 
-from rbac.core.models import UserRole, Role, Permission
-from rbac.core.database import Database, user_roles, roles, tenants, audit_logs
+from sqlalchemy import and_, delete, desc, func, insert, or_, select, update
+
+from rbac.core.database import Database, audit_logs, roles, tenants, user_roles
 from rbac.core.exceptions import (
-    RoleNotFoundError,
     PermissionDeniedError,
+    RoleNotFoundError,
     TenantNotFoundError,
 )
-from .role_service import RoleService
-from .permission_service import PermissionService
+from rbac.core.models import Role, UserRole
 from rbac.utils.logger import setup_logger
+
+from .permission_service import PermissionService
+from .role_service import RoleService
 
 logger = setup_logger("Assignment_service")
 
@@ -97,24 +99,23 @@ class AssignmentValidator:
         elif exclusivity_rule == RoleExclusivity.PER_TENANT:
             # User can only have one role per tenant
             if current_role_ids:
-                return False, f"User already has a role in this tenant"
+                return False, "User already has a role in this tenant"
 
-        elif exclusivity_rule == RoleExclusivity.MUTUALLY_EXCLUSIVE:
+        elif exclusivity_rule == RoleExclusivity.MUTUALLY_EXCLUSIVE and exclusive_role_ids:
             # Check if any current role is in the exclusive list
-            if exclusive_role_ids:
-                conflicting = current_role_ids.intersection(set(exclusive_role_ids))
-                if conflicting:
-                    # Get role names for better error message
-                    conflicting_roles = []
-                    for rid in conflicting:
-                        role = await self.role_service.get_role(rid, tenant_id)
-                        if role:
-                            conflicting_roles.append(role.name)
+            conflicting = current_role_ids.intersection(set(exclusive_role_ids))
+            if conflicting:
+                # Get role names for better error message
+                conflicting_roles = []
+                for rid in conflicting:
+                    role = await self.role_service.get_role(rid, tenant_id)
+                    if role:
+                        conflicting_roles.append(role.name)
 
-                    return (
-                        False,
-                        f"Cannot combine with exclusive roles: {', '.join(conflicting_roles)}",
-                    )
+                return (
+                    False,
+                    f"Cannot combine with exclusive roles: {', '.join(conflicting_roles)}",
+                )
 
         return True, "Valid"
 
@@ -190,12 +191,11 @@ class AssignmentValidator:
         sensitive_roles = ["admin", "super_admin", "manager"]
 
         role = await self.role_service.get_role(role_id, tenant_id)
-        if role and role.name in sensitive_roles:
-            if current_hour < 9 or current_hour > 17:
-                return (
-                    False,
-                    "Sensitive roles can only be assigned during business hours (9 AM - 5 PM UTC)",
-                )
+        if role and role.name in sensitive_roles and (current_hour < 9 or current_hour > 17):
+            return (
+                False,
+                "Sensitive roles can only be assigned during business hours (9 AM - 5 PM UTC)",
+            )
 
         return True, "Valid"
 
@@ -236,14 +236,10 @@ class AssignmentService:
         self.role_service = role_service
         self.permission_service = permission_service
         self.validator = AssignmentValidator(db, role_service)
-        self._assignment_cache: Dict[str, List[UserRole]] = (
-            {}
-        )  # user_id -> list of assignments
+        self._assignment_cache: Dict[str, List[UserRole]] = {}  # user_id -> list of assignments
 
         # Configure exclusivity rules per role (can be loaded from database or config)
-        self._role_exclusivity_rules: Dict[
-            UUID, Tuple[RoleExclusivity, Optional[List[UUID]]]
-        ] = {}
+        self._role_exclusivity_rules: Dict[UUID, Tuple[RoleExclusivity, Optional[List[UUID]]]] = {}
 
         # Configure max roles per user (can be per tenant or global)
         self._max_roles_per_user: Dict[Optional[UUID], int] = {
@@ -423,9 +419,7 @@ class AssignmentService:
             raise PermissionDeniedError(f"Hierarchy validation failed: {message}")
 
         # 3. Validate max assignments
-        max_roles = self._max_roles_per_user.get(
-            tenant_id, self._max_roles_per_user[None]
-        )
+        max_roles = self._max_roles_per_user.get(tenant_id, self._max_roles_per_user[None])
         is_valid, message = await self.validator.validate_max_assignments(
             user_id=user_id,
             role_id=role_id,
@@ -455,15 +449,11 @@ class AssignmentService:
                     tenant_id=tenant_id,
                 )
                 if not is_valid:
-                    raise PermissionDeniedError(
-                        f"Business hours validation failed: {message}"
-                    )
+                    raise PermissionDeniedError(f"Business hours validation failed: {message}")
 
             # Add more role-specific checks here as needed
 
-        logger.debug(
-            f"All validations passed for assigning role {role_id} to user {user_id}"
-        )
+        logger.debug(f"All validations passed for assigning role {role_id} to user {user_id}")
 
     async def validate_bulk_assignments(
         self,
@@ -571,9 +561,7 @@ class AssignmentService:
                     old_value=old_value,
                 )
 
-                logger.info(
-                    f"Permanently deleted role {role_id} assignment for user {user_id}"
-                )
+                logger.info(f"Permanently deleted role {role_id} assignment for user {user_id}")
         else:
             stmt = (
                 update(user_roles)
@@ -746,7 +734,9 @@ class AssignmentService:
         """Update the resource scope of an assignment"""
 
         # Get existing assignment
-        existing = await self.db.fetch_one(select(user_roles).where(user_roles.c.id == assignment_id))
+        existing = await self.db.fetch_one(
+            select(user_roles).where(user_roles.c.id == assignment_id)
+        )
 
         if not existing:
             raise ValueError(f"Assignment not found: {assignment_id}")
@@ -790,7 +780,9 @@ class AssignmentService:
         """Extend the expiration date of an assignment"""
 
         # Get existing assignment
-        existing = await self.db.fetch_one(select(user_roles).where(user_roles.c.id == assignment_id))
+        existing = await self.db.fetch_one(
+            select(user_roles).where(user_roles.c.id == assignment_id)
+        )
 
         if not existing:
             raise ValueError(f"Assignment not found: {assignment_id}")
@@ -823,9 +815,7 @@ class AssignmentService:
             action="EXTEND",
             resource_type="user_role",
             resource_id=assignment_id,
-            old_value={
-                "expires_at": old_expires_at.isoformat() if old_expires_at else None
-            },
+            old_value={"expires_at": old_expires_at.isoformat() if old_expires_at else None},
             new_value={"expires_at": new_expires_at.isoformat()},
         )
 
@@ -1003,9 +993,12 @@ class AssignmentService:
                 continue
 
             # Check if role applies to this resource
-            if resource_id and assignment.resource_scope:
-                if resource_id not in assignment.resource_scope.values():
-                    continue
+            if (
+                resource_id
+                and assignment.resource_scope
+                and resource_id not in assignment.resource_scope.values()
+            ):
+                continue
 
             if role.id not in seen_role_ids:
                 role_data = role.model_dump(mode="json")
@@ -1020,9 +1013,7 @@ class AssignmentService:
             if role.parent_ids:
                 for parent_id in role.parent_ids:
                     if parent_id not in seen_role_ids:
-                        parent_role = await self.role_service.get_role(
-                            parent_id, tenant_id
-                        )
+                        parent_role = await self.role_service.get_role(parent_id, tenant_id)
                         if parent_role:
                             parent_data = parent_role.model_dump(mode="json")
                             parent_data["inherited_from"] = str(role.id)
@@ -1104,9 +1095,7 @@ class AssignmentService:
 
         return affected_count
 
-    async def get_assignment_stats(
-        self, tenant_id: Optional[UUID] = None
-    ) -> Dict[str, Any]:
+    async def get_assignment_stats(self, tenant_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Get statistics about assignments"""
 
         active_conditions = [
@@ -1196,9 +1185,7 @@ class AssignmentService:
 
     async def clear_user_cache(self, user_id: UUID):
         """Clear cache for a specific user"""
-        keys_to_clear = [
-            key for key in self._assignment_cache.keys() if key.startswith(str(user_id))
-        ]
+        keys_to_clear = [key for key in self._assignment_cache if key.startswith(str(user_id))]
         for key in keys_to_clear:
             self._assignment_cache.pop(key, None)
         logger.debug(f"Cleared assignment cache for user {user_id}")

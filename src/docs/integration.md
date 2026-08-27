@@ -26,16 +26,16 @@ The integration layer allows you to:
 
 ```bash
 # Install with LDAP support
-pip install "fastapi-rbac[ldap]"
+pip install "kb-fastapi-rbac[ldap]"
 
 # Install with Keycloak support
-pip install "fastapi-rbac[keycloak]"
+pip install "kb-fastapi-rbac[keycloak]"
 
 # Install both
-pip install "fastapi-rbac[ldap,keycloak]"
+pip install "kb-fastapi-rbac[ldap,keycloak]"
 
 # Or with uv
-uv pip install "fastapi-rbac[all]"
+uv pip install "kb-fastapi-rbac[all]"
 
 LDAP Integration
 Configuration

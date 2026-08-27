@@ -1,20 +1,20 @@
 # examples/redis_example.py
-from fastapi import FastAPI, Depends
-import uvicorn
-from uuid import uuid4
 
-from rbac.core.database import Database
-from rbac.services.permission_service import PermissionService
-from rbac.services.role_service import RoleService
-from rbac.services.assignment_service import AssignmentService
+import uvicorn
+from fastapi import Depends, FastAPI
+
 from rbac.cache import (
+    CacheManager,
     RedisCache,
+    RedisCachedAssignmentService,
     RedisCachedPermissionService,
     RedisCachedRoleService,
-    RedisCachedAssignmentService,
-    CacheManager,
 )
+from rbac.core.database import Database
 from rbac.dependencies.auth import RBACDependencies, require_permissions
+from rbac.services.assignment_service import AssignmentService
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
 
 app = FastAPI(title="RBAC with Redis Caching")
 
@@ -32,9 +32,7 @@ redis_cache = RedisCache(
 # Initialize base services
 base_permission_service = PermissionService(db)
 base_role_service = RoleService(db, base_permission_service)
-base_assignment_service = AssignmentService(
-    db, base_role_service, base_permission_service
-)
+base_assignment_service = AssignmentService(db, base_role_service, base_permission_service)
 
 # Wrap with caching
 permission_service = RedisCachedPermissionService(
@@ -53,9 +51,7 @@ assignment_service = RedisCachedAssignmentService(
 )
 
 # Create cache manager
-cache_manager = CacheManager(
-    redis_cache, permission_service, role_service, assignment_service
-)
+cache_manager = CacheManager(redis_cache, permission_service, role_service, assignment_service)
 
 # Initialize RBAC dependencies
 rbac = RBACDependencies(
@@ -84,9 +80,7 @@ async def shutdown():
 
 @app.get("/users/{user_id}/permissions")
 @require_permissions(["user:read"])
-async def get_user_permissions(
-    user_id: str, current_user=Depends(rbac.get_current_active_user)
-):
+async def get_user_permissions(user_id: str, current_user=Depends(rbac.get_current_active_user)):
     """Get user permissions (cached)"""
     permissions = await permission_service.get_user_permissions(
         user_id=user_id, tenant_id=current_user.tenant_id
@@ -109,9 +103,7 @@ async def invalidate_user_cache(
     user_id: str, current_user=Depends(rbac.require_permissions(["cache:invalidate"]))
 ):
     """Invalidate cache for a specific user"""
-    await cache_manager.invalidate_user(
-        user_id=user_id, tenant_id=current_user.tenant_id
-    )
+    await cache_manager.invalidate_user(user_id=user_id, tenant_id=current_user.tenant_id)
     return {"message": f"Cache invalidated for user {user_id}"}
 
 
@@ -147,9 +139,7 @@ async def warm_user_cache(
     user_id: str, current_user=Depends(rbac.require_permissions(["cache:warm"]))
 ):
     """Pre-warm cache for a user"""
-    await cache_manager.warm_user_cache(
-        user_id=user_id, tenant_id=current_user.tenant_id
-    )
+    await cache_manager.warm_user_cache(user_id=user_id, tenant_id=current_user.tenant_id)
     return {"message": f"Cache warmed for user {user_id}"}
 
 
@@ -163,9 +153,7 @@ async def warm_role_cache(
 
 
 @app.get("/performance/compare")
-async def compare_performance(
-    user_id: str, current_user=Depends(rbac.get_current_active_user)
-):
+async def compare_performance(user_id: str, current_user=Depends(rbac.get_current_active_user)):
     """Compare cached vs uncached performance"""
     import time
 
@@ -173,7 +161,7 @@ async def compare_performance(
     await cache_manager.invalidate_user(user_id)
 
     start = time.time()
-    uncached_perms = await base_permission_service.get_user_permissions(
+    await base_permission_service.get_user_permissions(
         user_id=user_id, tenant_id=current_user.tenant_id
     )
     uncached_time = time.time() - start

@@ -1,7 +1,8 @@
 # tests/test_assignment_service.py
-import pytest
-from uuid import uuid4
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
 
 pytestmark = pytest.mark.asyncio
 
@@ -219,9 +220,7 @@ class TestAssignmentService:
         assert extended.expires_at > original_expiry
         assert (extended.expires_at - original_expiry).days == 30
 
-    async def test_bulk_assign_roles(
-        self, assignment_service, test_tenant, sample_roles
-    ):
+    async def test_bulk_assign_roles(self, assignment_service, test_tenant, sample_roles):
         """Test bulk assigning role to multiple users"""
         user_ids = [uuid4(), uuid4(), uuid4()]
 
@@ -244,13 +243,9 @@ class TestAssignmentService:
     ):
         """Test transferring assignments from one role to another"""
         # Create roles
-        old_role = await role_service.create_role(
-            name="Old Role", tenant_id=test_tenant.id
-        )
+        old_role = await role_service.create_role(name="Old Role", tenant_id=test_tenant.id)
 
-        new_role = await role_service.create_role(
-            name="New Role", tenant_id=test_tenant.id
-        )
+        new_role = await role_service.create_role(name="New Role", tenant_id=test_tenant.id)
 
         # Assign user to old role
         await assignment_service.assign_role_to_user(
@@ -371,9 +366,7 @@ class TestAssignmentService:
             user_id=test_user_id, tenant_id=test_tenant.id, include_inactive=True
         )
 
-        expired_assignment = next(
-            (a for a in assignments if a.id == assignment.id), None
-        )
+        expired_assignment = next((a for a in assignments if a.id == assignment.id), None)
         assert expired_assignment is not None
         assert expired_assignment.is_active is False
 

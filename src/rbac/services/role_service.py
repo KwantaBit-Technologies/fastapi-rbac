@@ -1,28 +1,29 @@
 # rbac/services/role_service.py
-from typing import Optional, List, Dict, Any, Set, Tuple
-from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select, insert, update, delete, and_, or_, func, text, union
-from sqlalchemy.sql import exists
+from typing import Any, Dict, List, Optional, Set, Tuple
+from uuid import UUID
 
-from rbac.core.models import Role, Permission, UserRole
+from sqlalchemy import and_, delete, func, insert, or_, select, update
+
+from rbac.core.constants import DEFAULT_ROLES, PermissionAction, ResourceType
 from rbac.core.database import (
     Database,
+    audit_logs,
+    permissions,
+    role_permissions,
     roles,
     tenants,
     user_roles,
-    role_permissions,
-    permissions,
-    audit_logs,
 )
 from rbac.core.exceptions import (
-    RoleNotFoundError,
     CircularRoleHierarchyError,
     PermissionDeniedError,
+    RoleNotFoundError,
     TenantNotFoundError,
 )
-from rbac.core.constants import DEFAULT_ROLES, ResourceType, PermissionAction
+from rbac.core.models import Permission, Role
 from rbac.utils.logger import setup_logger
+
 from .permission_service import PermissionService
 
 logger = setup_logger("ROLE_SERVICE")
@@ -34,21 +35,17 @@ class RoleService:
     def __init__(self, db: Database, permission_service: PermissionService):
         self.db = db
         self.permission_service = permission_service
-        self._role_hierarchy_cache: Dict[UUID, Set[UUID]] = (
-            {}
-        )  # role_id -> set of child role IDs
+        self._role_hierarchy_cache: Dict[UUID, Set[UUID]] = {}  # role_id -> set of child role IDs
         self._role_permissions_cache: Dict[str, Set[str]] = (
             {}
         )  # role_id:include_inherited -> set of permission strings
 
     async def initialize_default_roles(self, tenant_id: Optional[UUID] = None):
         """Initialize default system roles"""
-        for role_key, role_config in DEFAULT_ROLES.items():
+        for _role_key, role_config in DEFAULT_ROLES.items():
             # Check if role already exists
             stmt = select(roles.c.id).where(
-                and_(
-                    roles.c.name == role_config["name"], roles.c.tenant_id == tenant_id
-                )
+                and_(roles.c.name == role_config["name"], roles.c.tenant_id == tenant_id)
             )
             existing = await self.db.fetch_one(stmt)
 
@@ -76,9 +73,7 @@ class RoleService:
                         permission = await self.permission_service.create_permission(
                             name=f"{resource}:{action}",
                             resource=(
-                                ResourceType(resource)
-                                if resource != "*"
-                                else ResourceType.ALL
+                                ResourceType(resource) if resource != "*" else ResourceType.ALL
                             ),
                             action=(
                                 PermissionAction(action)
@@ -115,15 +110,11 @@ class RoleService:
                 raise TenantNotFoundError(tenant_id)
 
         # Check for duplicate role name within tenant
-        stmt = select(roles.c.id).where(
-            and_(roles.c.name == name, roles.c.tenant_id == tenant_id)
-        )
+        stmt = select(roles.c.id).where(and_(roles.c.name == name, roles.c.tenant_id == tenant_id))
         existing = await self.db.fetch_one(stmt)
 
         if existing:
-            raise PermissionDeniedError(
-                f"Role with name '{name}' already exists in this tenant"
-            )
+            raise PermissionDeniedError(f"Role with name '{name}' already exists in this tenant")
 
         # Validate parent hierarchy
         if parent_ids:
@@ -169,24 +160,18 @@ class RoleService:
         logger.info(f"Created role: {role.name} (ID: {role.id})")
         return role
 
-    async def get_role(
-        self, role_id: UUID, tenant_id: Optional[UUID] = None
-    ) -> Optional[Role]:
+    async def get_role(self, role_id: UUID, tenant_id: Optional[UUID] = None) -> Optional[Role]:
         """Get role by ID"""
         conditions = [roles.c.id == role_id]
 
         if tenant_id:
-            conditions.append(
-                or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None))
-            )
+            conditions.append(or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None)))
 
         stmt = select(roles).where(and_(*conditions))
         result = await self.db.fetch_one(stmt)
         return Role.model_validate(result) if result else None
 
-    async def get_role_by_name(
-        self, name: str, tenant_id: Optional[UUID] = None
-    ) -> Optional[Role]:
+    async def get_role_by_name(self, name: str, tenant_id: Optional[UUID] = None) -> Optional[Role]:
         """Get role by name within tenant"""
         conditions = [roles.c.name == name]
 
@@ -303,11 +288,7 @@ class RoleService:
             raise PermissionDeniedError(f"Cannot delete system role: {existing.name}")
 
         # Check if role has any users assigned
-        stmt = (
-            select(func.count())
-            .select_from(user_roles)
-            .where(user_roles.c.role_id == role_id)
-        )
+        stmt = select(func.count()).select_from(user_roles).where(user_roles.c.role_id == role_id)
         user_count = await self.db.fetch_val(stmt) or 0
 
         if user_count > 0 and not transfer_to_role_id:
@@ -329,9 +310,7 @@ class RoleService:
             )
             await self.db.execute(stmt)
 
-            logger.info(
-                f"Transferred users from role {role_id} to {transfer_to_role_id}"
-            )
+            logger.info(f"Transferred users from role {role_id} to {transfer_to_role_id}")
 
         # Remove role from any parent relationships in other roles.
         for child in await self.list_roles(existing.tenant_id, include_inactive=True):
@@ -388,9 +367,7 @@ class RoleService:
         conditions = []
 
         if tenant_id:
-            conditions.append(
-                or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None))
-            )
+            conditions.append(or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None)))
         else:
             conditions.append(roles.c.tenant_id.is_(None))
 
@@ -497,9 +474,7 @@ class RoleService:
             stmt = (
                 update(roles)
                 .where(roles.c.id == role_id)
-                .values(
-                    parent_ids=new_parent_ids, updated_at=datetime.now(timezone.utc)
-                )
+                .values(parent_ids=new_parent_ids, updated_at=datetime.now(timezone.utc))
             )
             await self.db.execute(stmt)
 
@@ -791,9 +766,7 @@ class RoleService:
             raise RoleNotFoundError(role_id)
 
         # Get existing permissions
-        stmt = select(role_permissions.c.permission_id).where(
-            role_permissions.c.role_id == role_id
-        )
+        stmt = select(role_permissions.c.permission_id).where(role_permissions.c.role_id == role_id)
         existing = await self.db.fetch_all(stmt)
         existing_ids = {r["permission_id"] for r in existing}
 
@@ -807,9 +780,7 @@ class RoleService:
                 new_permissions.append(str(perm_id))
 
         if new_permissions:
-            logger.info(
-                f"Bulk assigned {len(new_permissions)} permissions to role {role_id}"
-            )
+            logger.info(f"Bulk assigned {len(new_permissions)} permissions to role {role_id}")
 
     async def get_role_stats(self, role_id: UUID) -> Dict[str, Any]:
         """Get statistics about a role"""
@@ -821,9 +792,7 @@ class RoleService:
         user_count_stmt = (
             select(func.count())
             .select_from(user_roles)
-            .where(
-                and_(user_roles.c.role_id == role_id, user_roles.c.is_active == True)
-            )
+            .where(and_(user_roles.c.role_id == role_id, user_roles.c.is_active == True))
         )
         user_count = await self.db.fetch_val(user_count_stmt) or 0
 
@@ -842,9 +811,7 @@ class RoleService:
         ancestors = await self._get_ancestor_roles(role_id)
 
         # Get inherited permission count
-        all_permissions = await self.get_role_permissions(
-            role_id, include_inherited=True
-        )
+        all_permissions = await self.get_role_permissions(role_id, include_inherited=True)
 
         return {
             "role_id": str(role_id),

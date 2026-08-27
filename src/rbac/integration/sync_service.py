@@ -1,15 +1,16 @@
 # rbac/integration/sync_service.py
-from typing import Optional, List, Dict, Any, Callable
-from uuid import UUID
-from datetime import datetime, timedelta, timezone
 import asyncio
+import contextlib
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any, Dict, Optional
+from uuid import UUID
 
-from .base import IdentityProvider, ExternalUser, IdentityProviderHook
-from rbac.services.role_service import RoleService
 from rbac.services.assignment_service import AssignmentService
-from rbac.core.exceptions import RoleNotFoundError
+from rbac.services.role_service import RoleService
 from rbac.utils.logger import setup_logger
+
+from .base import ExternalUser, IdentityProvider, IdentityProviderHook
 
 logger = setup_logger("sync_integration")
 
@@ -87,10 +88,8 @@ class IdentitySyncService:
         """Stop automatic synchronization"""
         if self._sync_task:
             self._sync_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._sync_task
-            except asyncio.CancelledError:
-                pass
             self._sync_task = None
             logger.info("Auto-sync stopped")
 
@@ -115,9 +114,7 @@ class IdentitySyncService:
                 sync_stats["users_created"] = users_created
                 sync_stats["users_updated"] = users_updated
             elif self.strategy == SyncStrategy.INCREMENTAL:
-                users_created, users_updated = await self.provider.sync_users(
-                    self._last_sync
-                )
+                users_created, users_updated = await self.provider.sync_users(self._last_sync)
                 sync_stats["users_created"] = users_created
                 sync_stats["users_updated"] = users_updated
 
@@ -159,9 +156,7 @@ class IdentitySyncService:
 
             if local_user:
                 # Update existing user
-                external_user = await self.hook.before_user_update(
-                    external_user, local_user.id
-                )
+                external_user = await self.hook.before_user_update(external_user, local_user.id)
                 await self._update_local_user(local_user.id, external_user)
                 await self.hook.after_user_update(external_user, local_user.id)
                 action = "updated"
@@ -192,9 +187,7 @@ class IdentitySyncService:
             logger.error(f"Error syncing user {user_id}: {e}")
             return None
 
-    async def _sync_user_roles(
-        self, external_user: ExternalUser, local_user_id: UUID
-    ) -> int:
+    async def _sync_user_roles(self, external_user: ExternalUser, local_user_id: UUID) -> int:
         """Synchronize roles for a user"""
         roles_synced = 0
 
@@ -226,32 +219,36 @@ class IdentitySyncService:
 
         # Assign new roles
         for role_name, role_id in role_ids.items():
-            if role_id not in current_roles:
-                if await self.hook.before_role_assign(local_user_id, role_name):
-                    await self.assignment_service.assign_role_to_user(
-                        user_id=local_user_id,
-                        role_id=role_id,
-                        tenant_id=external_user.tenant_id,
-                        granted_by=None,  # System assignment
-                    )
-                    await self.hook.after_role_assign(local_user_id, role_name)
-                    roles_synced += 1
-                    self._sync_stats["roles_assigned"] += 1
+            if role_id not in current_roles and await self.hook.before_role_assign(
+                local_user_id, role_name
+            ):
+                await self.assignment_service.assign_role_to_user(
+                    user_id=local_user_id,
+                    role_id=role_id,
+                    tenant_id=external_user.tenant_id,
+                    granted_by=None,  # System assignment
+                )
+                await self.hook.after_role_assign(local_user_id, role_name)
+                roles_synced += 1
+                self._sync_stats["roles_assigned"] += 1
 
         # Revoke roles that are no longer present
         for assignment in current_assignments:
             role = await self.role_service.get_role(assignment.role_id)
-            if role and role.name not in internal_roles:
-                if await self.hook.before_role_revoke(local_user_id, role.name):
-                    await self.assignment_service.revoke_role_from_user(
-                        user_id=local_user_id,
-                        role_id=assignment.role_id,
-                        tenant_id=external_user.tenant_id,
-                        revoked_by=None,
-                    )
-                    await self.hook.after_role_revoke(local_user_id, role.name)
-                    roles_synced += 1
-                    self._sync_stats["roles_revoked"] += 1
+            if (
+                role
+                and role.name not in internal_roles
+                and await self.hook.before_role_revoke(local_user_id, role.name)
+            ):
+                await self.assignment_service.revoke_role_from_user(
+                    user_id=local_user_id,
+                    role_id=assignment.role_id,
+                    tenant_id=external_user.tenant_id,
+                    revoked_by=None,
+                )
+                await self.hook.after_role_revoke(local_user_id, role.name)
+                roles_synced += 1
+                self._sync_stats["roles_revoked"] += 1
 
         return roles_synced
 

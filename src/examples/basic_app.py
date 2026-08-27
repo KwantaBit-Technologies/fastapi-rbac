@@ -1,41 +1,38 @@
 # examples/basic_app.py
-from fastapi import FastAPI, Depends, Request, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from uuid import uuid4, UUID
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
-import uvicorn
 import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from uuid import UUID, uuid4
+
+import uvicorn
 from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from rbac.core.database import Database
-from rbac.services.permission_service import PermissionService
-from rbac.services.role_service import RoleService
-from rbac.services.assignment_service import AssignmentService, RoleExclusivity
+from rbac.core.exceptions import (
+    PermissionDeniedError,
+    RoleNotFoundError,
+)
+from rbac.decorators.rbac import (
+    PermissionChecker,
+    RBACDecorators,
+    create_rbac_router,
+    get_current_user_from_request,
+)
 from rbac.dependencies.auth import (
     RBACDependencies,
     RBACMiddleware,
     UserContext,
+    public_route,
     require_permissions,
     require_roles,
-    public_route,
     require_self_or_permission,
 )
-from rbac.decorators.rbac import (
-    RBACDecorators,
-    PermissionChecker,
-    create_rbac_router,
-    rbac_required,
-    get_current_user_from_request,
-)
-from rbac.core.constants import ResourceType, PermissionAction
-from rbac.core.exceptions import (
-    PermissionDeniedError,
-    RoleNotFoundError,
-    TenantNotFoundError,
-)
-from rbac.core.models import Permission, Role, UserRole
+from rbac.services.assignment_service import AssignmentService, RoleExclusivity
+from rbac.services.permission_service import PermissionService
+from rbac.services.role_service import RoleService
 
 load_dotenv()
 
@@ -135,8 +132,9 @@ async def initialize_rbac():
 
     # Create default tenant if needed
     try:
-        from rbac.core.database import tenants
         from sqlalchemy import select
+
+        from rbac.core.database import tenants
 
         # Check if default tenant exists
         stmt = select(tenants).where(tenants.c.name == "Default Tenant")
@@ -145,6 +143,7 @@ async def initialize_rbac():
         if not tenant:
             # Create default tenant
             from datetime import datetime, timezone
+
             from sqlalchemy import insert
 
             stmt = (
@@ -222,8 +221,9 @@ async def login(username: str, password: str):
     tenant_id = uuid4()
 
     # Create JWT token
-    from jose import jwt
     import os
+
+    from jose import jwt
 
     token_data = {
         "sub": str(user_id),
@@ -303,8 +303,7 @@ async def list_patients(
     # In production, fetch from database
     return {
         "patients": [
-            {"id": str(uuid4()), "name": f"Patient {i}"}
-            for i in range(offset, offset + limit)
+            {"id": str(uuid4()), "name": f"Patient {i}"} for i in range(offset, offset + limit)
         ],
         "total": 100,
         "limit": limit,
@@ -428,9 +427,7 @@ async def admin_dashboard(
         "dashboard": "Admin Dashboard",
         "user_role": current_user.roles,
         "stats": stats,
-        "recent_activity": [
-            {"action": "User login", "time": datetime.now().isoformat()}
-        ],
+        "recent_activity": [{"action": "User login", "time": datetime.now().isoformat()}],
     }
 
 
@@ -490,9 +487,7 @@ async def assign_role_to_user(
 # Tenant-aware routes
 @app.get("/tenant/settings", tags=["tenant"])
 async def get_tenant_settings(
-    current_user: UserContext = Depends(
-        rbac.require_tenant_access()(rbac.get_current_active_user)
-    ),
+    current_user: UserContext = Depends(rbac.require_tenant_access()(rbac.get_current_active_user)),
 ):
     """Get current tenant settings"""
     if not current_user.tenant_id:
@@ -515,9 +510,7 @@ async def process_resource(resource_id: str, action: str, request: Request):
     """Example of programmatic permission check with dynamic permissions"""
     user = get_current_user_from_request(request)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
     # Dynamic permission based on action
     required_permission = f"data:{action}"
@@ -603,7 +596,7 @@ async def batch_assign_roles(
         except Exception as e:
             results["failed"].append({"assignment": assignment, "reason": str(e)})
 
-    return {"message": f"Batch assignment complete", "results": results}
+    return {"message": "Batch assignment complete", "results": results}
 
 
 # Example with class-based view
@@ -614,9 +607,7 @@ class ReportController:
         self.request = request
         self.user = get_current_user_from_request(request)
 
-    @rbac_decorators.check_permissions(
-        permissions=["report:read"], resource_id_param="report_id"
-    )
+    @rbac_decorators.check_permissions(permissions=["report:read"], resource_id_param="report_id")
     async def get_report(self, report_id: str):
         """Get specific report"""
         return {
@@ -625,9 +616,7 @@ class ReportController:
             "user": str(self.user.id) if self.user else None,
         }
 
-    @rbac_decorators.check_permissions(
-        permissions=["report:generate"], require_all=False
-    )
+    @rbac_decorators.check_permissions(permissions=["report:generate"], require_all=False)
     async def generate_report(self, report_type: str, parameters: dict):
         """Generate a new report"""
         return {

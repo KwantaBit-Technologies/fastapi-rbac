@@ -1,10 +1,10 @@
 # rbac/cache/__init__.py
 from .redis_client import (
+    CacheManager,
     RedisCache,
+    RedisCachedAssignmentService,
     RedisCachedPermissionService,
     RedisCachedRoleService,
-    RedisCachedAssignmentService,
-    CacheManager,
 )
 
 __all__ = [

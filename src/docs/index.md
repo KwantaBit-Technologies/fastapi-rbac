@@ -1,7 +1,7 @@
 # FastAPI RBAC Engine
 
-[![PyPI version](https://badge.fury.io/py/fastapi-rbac.svg)](https://badge.fury.io/py/fastapi-rbac)  
-[![Python versions](https://img.shields.io/pypi/pyversions/fastapi-rbac.svg)](https://pypi.org/project/fastapi-rbac/)  
+[![PyPI version](https://badge.fury.io/py/kb-fastapi-rbac.svg)](https://badge.fury.io/py/kb-fastapi-rbac)  
+[![Python versions](https://img.shields.io/pypi/pyversions/kb-fastapi-rbac.svg)](https://pypi.org/project/kb-fastapi-rbac/)  
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
 [![Documentation](https://img.shields.io/badge/docs-mkdocs-blue)](https://fastapi-rbac.readthedocs.io)
 
@@ -32,21 +32,21 @@ A production-grade Role-Based Access Control (RBAC) system for FastAPI applicati
 
 ```bash
 # standard install
-pip install fastapi-rbac
+pip install kb-fastapi-rbac
 
 # using uv (recommended for faster installs)
 pip install uv
-uv pip install fastapi-rbac
+uv pip install kb-fastapi-rbac
 
 # optional extras
-uv pip install "fastapi-rbac[postgres]"  # PostgreSQL
-uv pip install "fastapi-rbac[mysql]"     # MySQL
-uv pip install "fastapi-rbac[redis]"     # Redis cache
-uv pip install "fastapi-rbac[ldap]"      # LDAP/AD
-uv pip install "fastapi-rbac[keycloak]"  # Keycloak
+uv pip install "kb-fastapi-rbac[postgres]"  # PostgreSQL
+uv pip install "kb-fastapi-rbac[mysql]"     # MySQL
+uv pip install "kb-fastapi-rbac[redis]"     # Redis cache
+uv pip install "kb-fastapi-rbac[ldap]"      # LDAP/AD
+uv pip install "kb-fastapi-rbac[keycloak]"  # Keycloak
 
 # full bundle
-uv pip install "fastapi-rbac[all]"
+uv pip install "kb-fastapi-rbac[all]"
 
 # development
 uv pip install -e ".[dev,docs,all]"

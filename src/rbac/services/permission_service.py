@@ -1,27 +1,27 @@
 # rbac/services/permission_service.py
-from typing import Optional, List, Dict, Any, Set
-from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select, insert, update, delete, and_, or_, func
-from sqlalchemy.sql import exists
+from typing import Any, Dict, List, Optional, Set
+from uuid import UUID
 
-from rbac.core.models import Permission, Role, UserRole, Tenant
-from rbac.core.database import Database
+from sqlalchemy import and_, delete, func, insert, or_, select, update
+
+from rbac.core.constants import PermissionAction, ResourceType
 from rbac.core.database import (
-    tenants,
-    permissions,
-    roles,
-    role_permissions,
-    user_roles,
+    Database,
     audit_logs,
+    permissions,
+    role_permissions,
+    roles,
+    tenants,
+    user_roles,
 )
 from rbac.core.exceptions import (
-    PermissionNotFoundError,
     PermissionDeniedError,
-    TenantNotFoundError,
+    PermissionNotFoundError,
     RoleNotFoundError,
+    TenantNotFoundError,
 )
-from rbac.core.constants import PermissionAction, ResourceType
+from rbac.core.models import Permission, Tenant
 from rbac.utils.logger import setup_logger
 
 logger = setup_logger("PERMISSION_SERVICE")
@@ -32,9 +32,7 @@ class PermissionService:
 
     def __init__(self, db: Database):
         self.db = db
-        self._permission_cache: Dict[str, Set[str]] = (
-            {}
-        )  # user_id -> set of permission strings
+        self._permission_cache: Dict[str, Set[str]] = {}  # user_id -> set of permission strings
 
     async def create_permission(
         self,
@@ -76,9 +74,7 @@ class PermissionService:
 
         existing = await self.db.fetch_one(query)
         if existing:
-            logger.warning(
-                f"Permission already exists: {resource.value}:{action.value}"
-            )
+            logger.warning(f"Permission already exists: {resource.value}:{action.value}")
             return Permission.model_validate(existing)
 
         # Create new permission
@@ -230,9 +226,7 @@ class PermissionService:
 
         return existing
 
-    async def delete_permission(
-        self, permission_id: UUID, deleted_by: Optional[UUID] = None
-    ):
+    async def delete_permission(self, permission_id: UUID, deleted_by: Optional[UUID] = None):
         """Delete a permission"""
         # Get existing permission
         existing = await self.get_permission(permission_id)
@@ -248,9 +242,7 @@ class PermissionService:
         # Check if permission is assigned to any roles
         assigned_query = (
             select(roles.c.id, roles.c.name)
-            .select_from(
-                roles.join(role_permissions, roles.c.id == role_permissions.c.role_id)
-            )
+            .select_from(roles.join(role_permissions, roles.c.id == role_permissions.c.role_id))
             .where(role_permissions.c.permission_id == permission_id)
         )
 
@@ -439,9 +431,7 @@ class PermissionService:
         # Convert to permission strings
         permission_strings = set()
         for p in permissions_list:
-            permission_strings.add(
-                self._permission_string(p["resource"], p["action"], p["scope"])
-            )
+            permission_strings.add(self._permission_string(p["resource"], p["action"], p["scope"]))
 
         # Get resource-scoped permissions from user_roles
         for assignment in assigned_rows:
@@ -454,9 +444,7 @@ class PermissionService:
 
         return permission_strings
 
-    def _permission_string(
-        self, resource: str, action: str, scope: Optional[str] = None
-    ) -> str:
+    def _permission_string(self, resource: str, action: str, scope: Optional[str] = None) -> str:
         """Build a normalized permission string from stored column values."""
         if resource == ResourceType.ALL.value and action == PermissionAction.MANAGE.value:
             return "*:*" if not scope else f"*:*:{scope}"
@@ -470,9 +458,7 @@ class PermissionService:
         """Resolve direct role IDs plus all ancestor role IDs."""
         conditions = [roles.c.is_active == True]
         if tenant_id:
-            conditions.append(
-                or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None))
-            )
+            conditions.append(or_(roles.c.tenant_id == tenant_id, roles.c.tenant_id.is_(None)))
 
         rows = await self.db.fetch_all(
             select(roles.c.id, roles.c.parent_ids).where(and_(*conditions))
@@ -560,18 +546,12 @@ class PermissionService:
 
     async def _clear_role_cache(self, role_id: UUID):
         """Clear cache for all users with this role"""
-        users_query = (
-            select(user_roles.c.user_id)
-            .distinct()
-            .where(user_roles.c.role_id == role_id)
-        )
+        users_query = select(user_roles.c.user_id).distinct().where(user_roles.c.role_id == role_id)
         users = await self.db.fetch_all(users_query)
 
         for user in users:
             cache_keys = [
-                key
-                for key in self._permission_cache.keys()
-                if key.startswith(str(user["user_id"]))
+                key for key in self._permission_cache if key.startswith(str(user["user_id"]))
             ]
             for key in cache_keys:
                 self._permission_cache.pop(key, None)
@@ -610,9 +590,7 @@ class PermissionService:
 
     async def clear_user_cache(self, user_id: UUID):
         """Clear permission cache for a specific user"""
-        keys_to_clear = [
-            key for key in self._permission_cache.keys() if key.startswith(str(user_id))
-        ]
+        keys_to_clear = [key for key in self._permission_cache if key.startswith(str(user_id))]
         for key in keys_to_clear:
             self._permission_cache.pop(key, None)
         logger.info(f"Cleared permission cache for user {user_id}")
@@ -621,11 +599,7 @@ class PermissionService:
         """Clear permission cache for all users with a specific role"""
         try:
             # Get all users with this role
-            query = (
-                select(user_roles.c.user_id)
-                .distinct()
-                .where(user_roles.c.role_id == role_id)
-            )
+            query = select(user_roles.c.user_id).distinct().where(user_roles.c.role_id == role_id)
             users = await self.db.fetch_all(query)
 
             # Clear cache for each user
@@ -652,11 +626,8 @@ class PermissionService:
                 return False
 
             # Validate action
-            if action != "*" and action not in [a.value for a in PermissionAction]:
-                return False
-
             # Scope is optional and can be any string
-            return True
+            return action == "*" or action in [a.value for a in PermissionAction]
 
         except Exception:
             return False

@@ -53,9 +53,31 @@ It is built for:
 
 # Installation
 
-Until the package is published to PyPI, install directly from GitHub.
+Install the package from PyPI:
+
+```bash
+pip install kb-fastapi-rbac
+```
+
+## Optional Features
+
+```bash
+# PostgreSQL support
+pip install "kb-fastapi-rbac[postgres]"
+
+# Redis caching
+pip install "kb-fastapi-rbac[redis]"
+
+# Identity providers
+pip install "kb-fastapi-rbac[ldap,keycloak]"
+
+# Install everything
+pip install "kb-fastapi-rbac[all]"
+```
 
 ## Install from GitHub
+
+Use this only when you need an unreleased commit from the repository.
 
 ```bash
 pip install git+https://github.com/kwantabit-Technologies/fastapi-rbac.git
@@ -83,30 +105,6 @@ uv venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 uv pip install -e ".[dev,all]"
-```
-
-## Future PyPI Installation
-
-Once the package is released on PyPI, installation will be as simple as:
-
-```bash
-pip install fastapi-rbac
-```
-
-## Optional Features
-
-```bash
-# PostgreSQL support
-pip install "fastapi-rbac[postgres]"
-
-# Redis caching
-pip install "fastapi-rbac[redis]"
-
-# Identity providers
-pip install "fastapi-rbac[ldap,keycloak]"
-
-# Install everything
-pip install "fastapi-rbac[all]"
 ```
 
 ---
